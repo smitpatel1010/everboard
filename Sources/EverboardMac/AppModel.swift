@@ -140,6 +140,15 @@ final class AppModel {
             Task { @MainActor in self?.tick() }
         }
         Task { tick() }
+        if CommandLine.arguments.contains("--show-palette") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                Log.info("palette check: before show frontmost=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?")")
+                CommandPalette.shared.show()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    Log.info("palette check: visible=\(CommandPalette.shared.isVisible) key=\(NSApp.keyWindow is PalettePanel) appActive=\(NSApp.isActive) frontmost=\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "?")")
+                }
+            }
+        }
         if CommandLine.arguments.contains("--test-notification") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.notifier.sendTest() }
         }

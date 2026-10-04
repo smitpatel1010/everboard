@@ -87,18 +87,38 @@ All of these run the `claude` CLI on your Mac. See [AI & token usage](ai-and-usa
 
 ## Command palette (⌥Space)
 
-It works from any app. Type to fuzzy-search:
-- commands ("Write my standup", "Refresh now"…)
-- MRs, Jira issues, pipelines
-- unread events
-- brief stories and news articles
+Press ⌥Space in any app. A floating search panel appears over what you're doing. It doesn't switch to Everboard, and it disappears when you click elsewhere.
+
+**Empty box:** shows **Needs attention** (review requests, red pipelines on your MRs, unread items), **Recent** items you opened from the palette, today's **meetings** and **commands**.
+
+**Typing:**
+- **Fuzzy search** across commands, MRs (yours, review requests, your team's), GitLab to-dos, Jira issues, pipelines, inbox items, today's brief stories, live news and meetings. Matched letters are highlighted, and results are grouped and ranked.
+- **Live search:** after 3+ characters, GitLab and Jira are searched too (MRs by title, Jira by text), so you also find things Everboard isn't tracking.
+- **Direct jumps:** type a Jira key (`PAY-123`) to open or digest it immediately; paste a URL to open it.
+- **Fallbacks:** "Ask the news: …", "Search Jira for …", "Search GitLab MRs for …".
+
+**Scopes.** Click a chip, press **Tab** / **⇧Tab** or **⌘1–⌘8**, or type a prefix:
+
+| Prefix | Scope |
+|---|---|
+| `>` | Commands |
+| `mr ` | Merge requests (+ GitLab search) |
+| `jira ` | Jira (+ Jira search) |
+| `pl ` | Pipelines |
+| `in ` | Inbox |
+| `news ` | Brief stories + live news |
+| `cal ` | Meetings |
+
+**Preview pane.** On the right: details for the selected item (project, author, pipeline, approvals, branch, Jira status/priority/assignee, story summary, meeting attendees…) and its actions.
 
 | Key | Action |
 |---|---|
-| ↩ | Open |
-| ⌘↩ | AI action (Summarize / Digest / Go deeper) |
+| ↩ | Primary action (open / join / run) |
+| ⌘↩ | Secondary action (AI summary, digest, go deeper, retry, mark read…) |
+| ⌘K | Action panel with every action, e.g. approve (asks first), retry pipeline, mark to-do done, **move a Jira issue** (its workflow loads live), follow a story, 👍/👎, mute, snooze, copy key/link |
+| ⇧⌘C | Copy link |
 | ↑↓ | Move |
-| Esc | Close |
+| Esc | Close the action panel → clear the query → reset the scope → close |
 
 ## Calendar
 

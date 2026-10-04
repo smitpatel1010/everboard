@@ -83,6 +83,16 @@ public struct JiraClient: Sendable {
         _ = try await http.data("POST", "/rest/api/3/issue/\(issueKey)/comment", body: try JSONEncoder().encode(doc))
     }
 
+    /// Text search, or a direct key lookup when the query looks like ABC-123.
+    public func quickSearch(_ text: String, limit: Int = 8) async throws -> [JiraIssue] {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        if t.range(of: #"^[A-Za-z][A-Za-z0-9]+-\d+$"#, options: .regularExpression) != nil {
+            return try await search("key = \(t.uppercased())", max: 1)
+        }
+        let escaped = t.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return try await search("text ~ \"\(escaped)*\" ORDER BY updated DESC", max: limit)
+    }
+
     /// Email → Jira accountId (for reportees' Jira activity in reports).
     public func findUser(email: String) async throws -> JiraUser? {
         try await http.json([JiraUser].self, "GET", "/rest/api/3/user/search", query: ["query": email]).first

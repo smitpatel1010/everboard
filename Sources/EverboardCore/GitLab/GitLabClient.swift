@@ -93,6 +93,13 @@ public struct GitLabClient: Sendable {
         try await http.json(GitLabMR.self, "GET", "/api/v4/projects/\(projectId)/merge_requests/\(iid)")
     }
 
+    /// Free-text MR search across everything the token can see (title/description).
+    public func searchMergeRequests(_ text: String, limit: Int = 8) async throws -> [GitLabMR] {
+        try await http.json([GitLabMR].self, "GET", "/api/v4/merge_requests", query: [
+            "scope": "all", "search": text, "in": "title", "order_by": "updated_at", "per_page": String(limit),
+        ])
+    }
+
     // MARK: Actions (need a token with the `api` scope)
 
     public func approve(projectId: String, iid: String) async throws {

@@ -126,6 +126,21 @@ enum DemoData {
         menu.orderFront(nil)
         try? await Task.sleep(nanoseconds: 800_000_000)
         save(host, to: dir.appendingPathComponent("menubar.png"))
+        for (name, query) in [("palette-empty", ""), ("palette-search", "pay"), ("palette-jira", "jira cache")] {
+            let state = PaletteState(model: model, close: {})
+            state.query = query
+            let host = NSHostingView(rootView: PaletteView(state: state))
+            let win = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: PaletteView.width, height: PaletteView.height),
+                               styleMask: [.borderless], backing: .buffered, defer: false)
+            win.appearance = NSAppearance(named: .aqua)
+            win.backgroundColor = .windowBackgroundColor
+            win.contentView = host
+            win.orderFront(nil)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            if name == "palette-search" { state.selection = 1; state.toggleActions(); try? await Task.sleep(nanoseconds: 400_000_000) }
+            save(host, to: dir.appendingPathComponent("\(name).png"))
+            win.orderOut(nil)
+        }
         ToastCenter.shared.show(.init(title: "Pipeline failed: Add retry budget to payment workers", body: "acme/payments-api · feature/PAY-1311",
                                       actionTitle: "Summarize with AI", onClick: {}, onAction: {}))
         Log.info("snapshots written to \(dir.path)")

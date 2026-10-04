@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
         MainActor.assumeIsolated {
             AppModel.shared.start()
-            if !launchedAtLogin && !DemoData.isDemo { AppModel.shared.showDashboard() }
+            if !launchedAtLogin && !DemoData.isDemo && !CommandLine.arguments.contains("--show-palette") { AppModel.shared.showDashboard() }
         }
     }
 
