@@ -1,0 +1,9 @@
+.build/
+build/
+.swiftpm/
+.DS_Store
+*.xcodeproj
+# Real secrets never leave this machine; the example template is committed.
+*.env
+secrets*
+!secrets.env.example
