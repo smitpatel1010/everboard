@@ -4,7 +4,7 @@ DEV := /Library/Developer/CommandLineTools/Library/Developer
 TEST_FLAGS := -Xswiftc -F -Xswiftc $(DEV)/Frameworks -Xlinker -F -Xlinker $(DEV)/Frameworks \
               -Xlinker -rpath -Xlinker $(DEV)/Frameworks -Xlinker -rpath -Xlinker $(DEV)/usr/lib
 
-.PHONY: build app install run test check cli icon leakcheck hooks clean
+.PHONY: build app install run test check cli icon screenshots leakcheck hooks clean
 
 build:
 	swift build
@@ -30,6 +30,18 @@ check: cli
 
 icon:
 	swift scripts/make-icon.swift Resources/AppIcon.icns
+
+# README screenshots from demo data (never your real accounts), light and dark.
+SHOTS := home mrs world reports workbrief palette-search menubar
+screenshots:
+	scripts/build-app.sh debug
+	@for mode in light dark; do \
+		rm -rf build/snapshots/$$mode; \
+		build/Everboard.app/Contents/MacOS/Everboard --demo --snapshot build/snapshots/$$mode --appearance $$mode; \
+		mkdir -p docs/screenshots/$$mode; \
+		for s in $(SHOTS); do sips -Z 1600 build/snapshots/$$mode/$$s.png --out docs/screenshots/$$mode/$$s.png >/dev/null; done; \
+	done
+	@echo "Updated docs/screenshots/{light,dark}"
 
 # Secrets / personal-details scan of everything that would be committed (add --history for all commits).
 leakcheck:

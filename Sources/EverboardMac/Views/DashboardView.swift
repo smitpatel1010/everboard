@@ -6,68 +6,88 @@ struct DashboardView: View {
 
     var body: some View {
         @Bindable var model = model
-        NavigationSplitView {
-            List(selection: $model.selection) {
-                Section {
-                    Label("Home", systemImage: "house").tag(SidebarItem.home)
+        Group {
+            if DemoData.snapshotDir != nil {
+                // Snapshot mode: the glass sidebar of NavigationSplitView can't be captured offscreen, so draw it flat.
+                HStack(spacing: 0) {
+                    SnapshotSidebar(health: healthFooter)
+                        .frame(width: 220)
+                        .background(.background.secondary)
+                    Divider()
+                    detail.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                Section("Work") {
-                    Label("Inbox", systemImage: "tray").badge(model.unread).tag(SidebarItem.inbox)
-                    Label(model.changesTitle, systemImage: "arrow.triangle.pull")
-                        .badge(model.items.reviewReady.count).tag(SidebarItem.mergeRequests)
-                    Label("Pipelines", systemImage: "gearshape.2")
-                        .badge(model.items.pipelines.filter { $0.status == "failed" && ($0.updatedAt ?? .distantPast) > Date().addingTimeInterval(-86400) }.count)
-                        .tag(SidebarItem.pipelines)
-                    Label("Jira", systemImage: "checklist").badge(model.items.jiraAssigned.count).tag(SidebarItem.jira)
-                    Label("Work Brief", systemImage: "sun.max").tag(SidebarItem.workBrief)
-                    Label("Team & Reports", systemImage: "person.3").tag(SidebarItem.reports)
-                }
-                if !model.config.webPanels.isEmpty {
-                    Section("Web") {
-                        ForEach(model.config.webPanels) { p in
-                            Label(p.name, systemImage: "globe.desk").tag(SidebarItem.web(p.id))
+                .background(Color(nsColor: .windowBackgroundColor))
+            } else {
+                NavigationSplitView {
+                    sidebar.navigationSplitViewColumnWidth(min: 190, ideal: 210)
+                } detail: {
+                    detail
+                        .toolbar {
+                            ToolbarItem {
+                                Button { CommandPalette.shared.show() } label: { Label("Search", systemImage: "magnifyingglass") }
+                                    .help("Search everything (⌥Space)")
+                            }
+                            ToolbarItem {
+                                Button { model.refreshAll() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                                    .help("Refresh every account now")
+                            }
                         }
-                    }
-                }
-                Section("Personal") {
-                    Label("World & Tech", systemImage: "globe").tag(SidebarItem.worldBrief)
-                }
-                Section {
-                    Label("AI Activity", systemImage: "lock.shield").tag(SidebarItem.aiActivity)
-                    Label("Settings", systemImage: "gearshape").tag(SidebarItem.settings)
                 }
             }
-            .navigationSplitViewColumnWidth(min: 190, ideal: 210)
-            .safeAreaInset(edge: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(model.health.keys.sorted(), id: \.self) { key in
-                        let h = model.health[key]!
-                        HStack(spacing: 5) {
-                            Circle().fill(h.isHealthy ? .green : (h == .idle ? .gray : .orange)).frame(width: 7, height: 7)
-                            Text(h.isHealthy ? "\(model.sourceName(key)) · \(h.label)" : h.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        } detail: {
-            detail
-                .toolbar {
-                    ToolbarItem {
-                        Button { CommandPalette.shared.show() } label: { Label("Search", systemImage: "magnifyingglass") }
-                            .help("Search everything (⌥Space)")
-                    }
-                    ToolbarItem {
-                        Button { model.refreshAll() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                            .help("Refresh every account now")
-                    }
-                }
         }
         .sheet(item: $model.aiPanel) { panel in
             AIPanelSheet(panel: panel).environment(model).environment(\.refLinker, model.refLinker)
         }
         .environment(\.refLinker, model.refLinker)
+    }
+
+    private var sidebar: some View {
+        @Bindable var model = model
+        return List(selection: $model.selection) {
+            Section {
+                Label("Home", systemImage: "house").tag(SidebarItem.home)
+            }
+            Section("Work") {
+                Label("Inbox", systemImage: "tray").badge(model.unread).tag(SidebarItem.inbox)
+                Label(model.changesTitle, systemImage: "arrow.triangle.pull")
+                    .badge(model.items.reviewReady.count).tag(SidebarItem.mergeRequests)
+                Label("Pipelines", systemImage: "gearshape.2")
+                    .badge(model.items.pipelines.filter { $0.status == "failed" && ($0.updatedAt ?? .distantPast) > Date().addingTimeInterval(-86400) }.count)
+                    .tag(SidebarItem.pipelines)
+                Label("Jira", systemImage: "checklist").badge(model.items.jiraAssigned.count).tag(SidebarItem.jira)
+                Label("Work Brief", systemImage: "sun.max").tag(SidebarItem.workBrief)
+                Label("Team & Reports", systemImage: "person.3").tag(SidebarItem.reports)
+            }
+            if !model.config.webPanels.isEmpty {
+                Section("Web") {
+                    ForEach(model.config.webPanels) { p in
+                        Label(p.name, systemImage: "globe.desk").tag(SidebarItem.web(p.id))
+                    }
+                }
+            }
+            Section("Personal") {
+                Label("World & Tech", systemImage: "globe").tag(SidebarItem.worldBrief)
+            }
+            Section {
+                Label("AI Activity", systemImage: "lock.shield").tag(SidebarItem.aiActivity)
+                Label("Settings", systemImage: "gearshape").tag(SidebarItem.settings)
+            }
+        }
+        .safeAreaInset(edge: .bottom) { healthFooter }
+    }
+
+    private var healthFooter: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(model.health.keys.sorted(), id: \.self) { key in
+                let h = model.health[key]!
+                HStack(spacing: 5) {
+                    Circle().fill(h.isHealthy ? .green : (h == .idle ? .gray : .orange)).frame(width: 7, height: 7)
+                    Text(h.isHealthy ? "\(model.sourceName(key)) · \(h.label)" : h.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder var detail: some View {
@@ -89,6 +109,68 @@ struct DashboardView: View {
                 EmptyState(icon: "globe", title: "Panel removed")
             }
         }
+    }
+}
+
+// MARK: - Snapshot sidebar
+
+/// `--snapshot` only: an offscreen window is never active, so the real sidebar would render dimmed.
+/// This draws the same items the way the active sidebar looks.
+private struct SnapshotSidebar<Footer: View>: View {
+    private var model: AppModel { .shared }
+    let health: Footer
+
+    private struct Row: Identifiable {
+        let title: String, icon: String, item: SidebarItem, badge: Int
+        var id: String { title }
+    }
+
+    private var sections: [(String?, [Row])] {
+        let i = model.items
+        let failed = i.pipelines.filter { $0.status == "failed" && ($0.updatedAt ?? .distantPast) > Date().addingTimeInterval(-86400) }.count
+        return [
+            (nil, [Row(title: "Home", icon: "house", item: .home, badge: 0)]),
+            ("Work", [Row(title: "Inbox", icon: "tray", item: .inbox, badge: model.unread),
+                      Row(title: model.changesTitle, icon: "arrow.triangle.pull", item: .mergeRequests, badge: i.reviewReady.count),
+                      Row(title: "Pipelines", icon: "gearshape.2", item: .pipelines, badge: failed),
+                      Row(title: "Jira", icon: "checklist", item: .jira, badge: i.jiraAssigned.count),
+                      Row(title: "Work Brief", icon: "sun.max", item: .workBrief, badge: 0),
+                      Row(title: "Team & Reports", icon: "person.3", item: .reports, badge: 0)]),
+            ("Personal", [Row(title: "World & Tech", icon: "globe", item: .worldBrief, badge: 0)]),
+            (nil, [Row(title: "AI Activity", icon: "lock.shield", item: .aiActivity, badge: 0),
+                   Row(title: "Settings", icon: "gearshape", item: .settings, badge: 0)]),
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                VStack(alignment: .leading, spacing: 2) {
+                    if let header = section.0 {
+                        Text(header).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .padding(.horizontal, 10).padding(.bottom, 2)
+                    }
+                    ForEach(section.1) { row in
+                        let selected = model.selection == row.item
+                        HStack(spacing: 8) {
+                            Image(systemName: row.icon).foregroundStyle(Color.accentColor)
+                                .frame(width: 20, alignment: .center)
+                            Text(row.title).foregroundStyle(.primary)
+                            Spacer(minLength: 4)
+                            if row.badge > 0 { Text("\(row.badge)").font(.callout).foregroundStyle(.secondary) }
+                        }
+                        .font(.body)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(selected ? Color.primary.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                    }
+                }
+                .padding(.bottom, 14)
+            }
+            Spacer()
+            health
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 12)
     }
 }
 

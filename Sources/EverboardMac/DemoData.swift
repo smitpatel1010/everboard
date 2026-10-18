@@ -8,6 +8,13 @@ import SwiftUI
 enum DemoData {
     static var isDemo: Bool { CommandLine.arguments.contains("--demo") }
 
+    /// `--appearance dark` renders snapshots in dark mode (light by default), for theme-aware README images.
+    static var snapshotAppearance: NSAppearance? {
+        let args = CommandLine.arguments
+        let dark = args.firstIndex(of: "--appearance").map { $0 + 1 < args.count && args[$0 + 1] == "dark" } ?? false
+        return NSAppearance(named: dark ? .darkAqua : .aqua)
+    }
+
     static var snapshotDir: URL? {
         guard let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count else { return nil }
         return URL(fileURLWithPath: CommandLine.arguments[i + 1])
@@ -159,14 +166,55 @@ enum DemoData {
                 var u = ClaudeUsage(); u.model = "claude-sonnet"; u.inputTokens = i; u.outputTokens = o; u.cacheReadTokens = i / 2; u.durationMs = 24000
                 await store.recordUsage(feature: feature, usage: u, costUSD: cost, ok: true, now: now.addingTimeInterval(-Double(n * 3) * 86400))
             }
-            // Reuse the real World & Tech brief if one exists.
-            if let real = try? Store() {
-                if let brief = try? await real.latestBrief() { try await store.saveBrief(brief) }
-                if let arts = try? await real.articles(since: now.addingTimeInterval(-36 * 3600)) { try await store.insertArticles(arts) }
-            }
+            // A fixed sample brief: demo mode never reads your real news data.
+            try await store.saveBrief(try JSONDecoder.everboard.decode(NewsBrief.self, from: Data(sampleBriefJSON(now).utf8)))
         } catch {
             Log.info("demo seed failed: \(error)")
         }
+    }
+
+    static func sampleBriefJSON(_ now: Date) -> String {
+        func story(_ key: String, _ title: String, _ summary: String, _ why: String, _ sources: [String], _ topics: [String], _ importance: Int) -> String {
+            let enc = { (s: String) in String(decoding: try! JSONEncoder().encode(s), as: UTF8.self) }
+            let list = { (xs: [String]) in "[" + xs.map(enc).joined(separator: ",") + "]" }
+            return """
+            {"key":\(enc(key)),"title":\(enc(title)),"summary":\(enc(summary)),"whyItMatters":\(enc(why)),
+             "urls":["https://example.com/\(key)"],"sources":\(list(sources)),"topics":\(list(topics)),"importance":\(importance)}
+            """
+        }
+        let ai = [
+            story("demo-ai-1", "Open-weight coding model tops agent benchmarks",
+                  "A new open-weight model matches frontier systems on multi-file coding tasks and runs on a single workstation GPU.",
+                  "Local, private code assistants are now realistic for teams that can't send code to the cloud.",
+                  ["Hacker News", "The Verge"], ["ai", "open-weight"], 5),
+            story("demo-ai-2", "Agents get a shared standard for tool permissions",
+                  "Several AI vendors agreed on a common format for declaring which tools an agent may call and with what scope.",
+                  "Expect simpler security reviews for internal AI tooling.", ["MIT Technology Review"], ["ai", "security"], 4),
+        ]
+        let tech = [
+            story("demo-tech-1", "Swift 6.3 ships faster builds and better concurrency diagnostics",
+                  "The release cuts incremental build times and makes data-race errors easier to understand.",
+                  "Worth upgrading macOS and server-side Swift projects this sprint.", ["Swift.org"], ["swift", "apple"], 4),
+            story("demo-tech-2", "GitLab and GitHub both add merge-queue analytics",
+                  "New dashboards show how long changes wait in merge queues and which checks slow them down.",
+                  "Useful data for cycle-time conversations with your team.", ["GitLab", "GitHub Blog"], ["devtools", "gitlab", "github"], 3),
+        ]
+        let world = [
+            story("demo-world-1", "Global climate summit agrees on grid-storage targets",
+                  "Countries committed to tripling grid-scale battery capacity by 2030, with funding for developing economies.",
+                  "Big demand signal for energy-storage supply chains.", ["BBC World", "The Guardian"], ["climate", "energy"], 4),
+            story("demo-world-2", "Central banks signal a pause as inflation cools",
+                  "Several major central banks held rates steady and pointed to easing price growth across services.",
+                  "Borrowing costs may have peaked, which matters for hiring and tech budgets next year.", ["NPR World", "Al Jazeera"],
+                  ["economy"], 3),
+        ]
+        return """
+        {"id":"demo-brief","createdAt":"\(Dates.iso(now.addingTimeInterval(-3 * 3600)))",
+         "headline":"A climate deal on grid storage, open-weight models catch up on coding, and Swift 6.3 speeds up builds.",
+         "sections":[{"name":"World","stories":[\(world.joined(separator: ","))]},{"name":"AI","stories":[\(ai.joined(separator: ","))]},
+                     {"name":"Your tech","stories":[\(tech.joined(separator: ","))]}],
+         "candidateCount":148,"costUSD":0.31}
+        """
     }
 
     static func seedCalendar(_ calendar: CalendarService) {
@@ -188,11 +236,12 @@ enum DemoData {
 
     static func snapshot(model: AppModel, to dir: URL) async {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSApp.appearance = snapshotAppearance
         let window = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 1180, height: 760),
-                              styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+                              styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: DashboardView().environment(model))
         // Light + opaque so offscreen captures don't lose text over translucent materials.
-        window.appearance = NSAppearance(named: .aqua)
+        window.appearance = snapshotAppearance
         window.backgroundColor = .windowBackgroundColor
         window.orderFront(nil)
         let screens: [(String, SidebarItem)] = [("inbox", .inbox), ("home", .home), ("aiactivity", .aiActivity), ("mrs", .mergeRequests), ("pipelines", .pipelines),
@@ -203,10 +252,10 @@ enum DemoData {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             save(window.contentView!, to: dir.appendingPathComponent("\(name).png"))
         }
-        let menu = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 380, height: 520), styleMask: [.titled], backing: .buffered, defer: false)
-        let host = NSHostingView(rootView: MenuBarView().environment(model))
+        let menu = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 380, height: 520), styleMask: [.borderless], backing: .buffered, defer: false)
+        let host = NSHostingView(rootView: MenuBarView().environment(model).background(Color(nsColor: .windowBackgroundColor)))
         menu.contentView = host
-        menu.appearance = NSAppearance(named: .aqua)
+        menu.appearance = snapshotAppearance
         menu.setContentSize(host.fittingSize)
         menu.orderFront(nil)
         try? await Task.sleep(nanoseconds: 800_000_000)
@@ -214,10 +263,10 @@ enum DemoData {
         for (name, query) in [("palette-empty", ""), ("palette-search", "pay"), ("palette-jira", "jira cache")] {
             let state = PaletteState(model: model, close: {})
             state.query = query
-            let host = NSHostingView(rootView: PaletteView(state: state))
+            let host = NSHostingView(rootView: PaletteView(state: state).background(Color(nsColor: .windowBackgroundColor)))
             let win = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: PaletteView.width, height: PaletteView.height),
                                styleMask: [.borderless], backing: .buffered, defer: false)
-            win.appearance = NSAppearance(named: .aqua)
+            win.appearance = snapshotAppearance
             win.backgroundColor = .windowBackgroundColor
             win.contentView = host
             win.orderFront(nil)
@@ -232,9 +281,22 @@ enum DemoData {
         NSApp.terminate(nil)
     }
 
+    /// `cacheDisplay` can't draw behind-window blur (the sidebar comes out blank), so blend within the window instead.
+    private static func flattenEffects(_ view: NSView) {
+        if let fx = view as? NSVisualEffectView {
+            fx.blendingMode = .withinWindow
+            fx.state = .active
+        }
+        view.subviews.forEach(flattenEffects)
+    }
+
     private static func save(_ view: NSView, to url: URL) {
+        flattenEffects(view)
+        view.layoutSubtreeIfNeeded()
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
+
+
 }

@@ -198,7 +198,7 @@ private struct KPIRow: View {
         HStack(spacing: 12) {
             KPITile(icon: "eye", tint: .blue, value: i.reviewReady.count, title: "To review",
                     detail: oldestReview.map { "oldest \(Dates.age($0))" } ?? "queue is clear") { model.selection = .mergeRequests }
-            KPITile(icon: "arrow.triangle.pull", tint: .purple, value: i.mine.count, title: "My open MRs",
+            KPITile(icon: "arrow.triangle.pull", tint: .purple, value: i.mine.count, title: "My open " + (model.changesTitle == "Pull Requests" ? "PRs" : model.changesTitle == "MRs & PRs" ? "MRs & PRs" : "MRs"),
                     detail: "\(red) red · \(ready) ready") { model.selection = .mergeRequests }
             KPITile(icon: "xmark.octagon", tint: failed > 0 ? .red : .green, value: failed, title: "Failed pipelines",
                     detail: "last 24 hours") { model.selection = .pipelines }

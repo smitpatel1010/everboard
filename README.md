@@ -1,19 +1,90 @@
 # Everboard
 
-A macOS menu-bar app that puts your workday in one place:
+**Your personal command center on macOS.** Everboard keeps track of your team's tickets, pull requests and pipelines across GitLab, GitHub and Jira, tells you what needs you today, and keeps you up to date with a daily world and tech news brief. It all lives in your menu bar.
 
-- **GitLab and GitHub, as many accounts as you like:** your MRs/PRs, review requests, your reportees' changes, pipelines / Actions runs and to-dos / notifications. Mix gitlab.com, self-hosted GitLab, github.com and GitHub Enterprise, optionally limited to certain groups or orgs
-- **Jira Cloud:** issues assigned to you and the saved filters you choose to watch
-- **Notifications:** pipeline and check failures, new MRs/PRs from your team, mentions, Jira changes, with batching and quiet time during meetings
-- **AI via the local `claude` CLI:**
-  - a morning work brief
-  - MR/PR summaries and Jira digests
-  - standups, weekly reports and team-health notes
-  - meeting prep
-- **World & Tech brief:** a personal news brief that learns from your 👍/👎
-- **⌥Space command palette**, calendar integration, read-aloud, and a dashboard of your Claude token usage
+I built it as the one app I keep open all day: one place to see my own work, my team's work, and what's happening in the world.
 
-It's native Swift/SwiftUI, uses about 40 MB of RAM, and stores all its data locally on your Mac.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/home.png">
+  <img alt="Everboard home: greeting, review queue, failed pipelines, Jira, today's meetings and team status" src="docs/screenshots/light/home.png">
+</picture>
+
+<sub>Screenshots use the built-in demo data (`--demo`), not real accounts.</sub>
+
+## What it does
+
+### Your work and your team's, in one list
+
+- **Merge requests and pull requests** from any number of GitLab and GitHub accounts: gitlab.com, self-hosted GitLab, github.com and GitHub Enterprise, each optionally limited to certain groups or orgs.
+- **Review queue, your own changes, and everything your reportees have open**, with pipeline / checks status, approvals and merge blockers.
+- **Jira Cloud** issues assigned to you and the filters you choose to watch.
+- **Pipelines and GitHub Actions runs** you triggered, failed ones first, with one-click retry.
+- **Notifications that respect your focus:** CI failures, new changes from your team, mentions and Jira updates. Low-priority ones are batched, and alerts stay quiet during meetings.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/mrs.png">
+  <img alt="Merge and pull requests from GitLab and GitHub in one review queue" src="docs/screenshots/light/mrs.png">
+</picture>
+
+### Team health and reports, written for you
+
+Per-person metrics (cycle time, change size, stuck work, reviews given), plus a daily standup and a weekly report written by Claude from your actual GitLab, GitHub and Jira activity.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/reports.png">
+  <img alt="Team health table with an AI read of who shipped and who might be stuck" src="docs/screenshots/light/reports.png">
+</picture>
+
+### A morning brief that tells you what matters
+
+Every morning Claude reads your open changes, pipelines, reviews, team and Jira issues and tells you what needs you first. It can also summarize any MR or PR, digest a long Jira thread, or prep you for your next meeting.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/workbrief.png">
+  <img alt="AI work brief: what needs you today, your team, and FYI" src="docs/screenshots/light/workbrief.png">
+</picture>
+
+### Stay current with the world
+
+A personal **World & Tech brief**: Claude picks the stories that matter from world news, AI and your tech stack, explains why each one matters, and learns from your 👍 / 👎. Follow a story to get updates, or ask questions about today's news.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/world.png">
+  <img alt="World & Tech brief with world, AI and tech stories and per-story feedback" src="docs/screenshots/light/world.png">
+</picture>
+
+### Everything a keystroke away
+
+<table>
+<tr>
+<td width="62%">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/palette-search.png">
+  <img alt="Command palette searching meetings, Jira issues and pipelines" src="docs/screenshots/light/palette-search.png">
+</picture>
+
+**⌥Space** opens a command palette that searches everything: your changes, Jira, pipelines, inbox, news and meetings, plus live search across every account.
+
+</td>
+<td>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/menubar.png">
+  <img alt="Menu bar popover with meetings and recent notifications" src="docs/screenshots/light/menubar.png" width="360">
+</picture>
+
+The **menu bar** shows your next meetings and latest notifications at a glance.
+
+</td>
+</tr>
+</table>
+
+### Built to stay out of the way
+
+- Native Swift/SwiftUI, around 40 MB of RAM, and all data stays on your Mac. There's no Everboard server.
+- AI features run through your local [`claude` CLI](https://docs.claude.com/en/docs/claude-code), with privacy controls: secrets and emails are redacted, names can be swapped for placeholders, and every prompt sent is logged so you can inspect it.
+- Calendar integration, read-aloud for briefs, and a dashboard of your Claude token usage.
 
 > **Status:** personal project, works on macOS 14+ (tested on macOS 26). GitLab (gitlab.com or self-hosted), GitHub (github.com or Enterprise Server) and Jira **Cloud** are supported. Jira Server/Data Center is not.
 
@@ -71,6 +142,7 @@ All the docs are in [`docs/`](docs/README.md):
 make test                                               # Swift Testing (no Xcode needed)
 make build                                              # debug build
 open build/Everboard.app --args --demo                  # sample data, no tokens needed
+make screenshots                                        # regenerate the README screenshots (light + dark)
 swift run everboard-cli check                           # verify tokens and connections
 make leakcheck                                          # scan for tokens / personal details before committing
 ```
