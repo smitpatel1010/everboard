@@ -48,7 +48,7 @@ public protocol FetchContext: Sendable {
     var config: AppConfig { get }
 }
 
-/// A pollable integration (GitLab, Jira, news, later personal sources).
+/// A pollable integration (one per GitLab/GitHub account, Jira, news).
 public protocol DataSource: Sendable {
     var id: String { get }
     var displayName: String { get }

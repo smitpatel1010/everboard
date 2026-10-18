@@ -19,6 +19,8 @@ claude -p --output-format json --no-session-persistence --strict-mcp-config \
 - The child process gets a **cleaned environment**: Everboard's token variables are removed.
 - The JSON reply provides the text, any structured output, the cost and the token usage.
 
+Before the CLI runs, `PrivacyClaudeRunner` (`Sources/EverboardCore/AI/Privacy.swift`) applies **Settings → AI privacy**: it refuses work features when they're turned off, masks secrets, emails, names and your own terms in the prompt, and restores the placeholders in the reply. `RecordingClaudeRunner` then stores the masked prompt, the instructions and the reply in the `ai_log` table, which you can browse on the **AI Activity** screen. That screen shows exactly what Claude received, not what Everboard meant to send.
+
 The path to `claude` is auto-detected (`~/.local/bin`, Homebrew, `/usr/local/bin`, `$PATH`) or set in Settings → General. Leave the model blank to use the CLI's default, or set e.g. `sonnet` / `haiku` to trade quality for cost.
 
 ## What each feature sends
@@ -26,12 +28,12 @@ The path to `claude` is auto-detected (`~/.local/bin`, Homebrew, `/usr/local/bin
 | Feature (`feature` label) | Input | Tools | Typical size |
 |---|---|---|---|
 | Work brief (`work.brief`) | Your open MRs, review queue, reportee MRs, to-dos, last 24 h of pipelines, assigned Jira issues, last 24 h of events (titles and statuses only) | none | 2–8k tokens in |
-| MR summary (`mr.summary`) | MR title, description, diff (truncated at about 60 KB) | none | up to about 20k in |
-| Jira digest (`jira.digest`) | Issue fields, description, up to 40 comments | none | 2–15k in |
+| MR summary (`mr.summary`) | MR title, description, diff (truncated at about 60 KB; file names and line counts only when diffs are off) | none | up to about 20k in |
+| Jira digest (`jira.digest`) | Issue fields, description, up to 40 comments (fields and comment authors only when Jira text is off) | none | 2–15k in |
 | Daily standup (`report.standup`) | Your merged and reviewed MRs since the last workday, Jira issues you touched, open MRs | none | 1–4k in |
 | Weekly report (`report.weekly`) | Merged and open MRs for you and each reportee over 7 days, Jira issues resolved | none | 3–15k in |
 | Team health AI read (`team.commentary`) | The metrics table only | none | < 1k in |
-| Meeting prep (`meeting.prep`) | Event title, time, attendees, notes, related MR/issue titles | none | 1–3k in |
+| Meeting prep (`meeting.prep`) | Event title, time, attendees, notes (unless turned off), related MR/issue titles | none | 1–3k in |
 | World & Tech brief (`news.brief`) | About 150 headlines with snippets, your preferences, recent feedback | `WebSearch` if gap check is on | 15–25k in |
 | Go deeper (`news.deeper`) | One story and its source URLs | `WebFetch`, `WebSearch` | varies |
 | Ask the news (`news.ask`) | Your question, today's brief, about 220 recent headlines | `WebSearch`, `WebFetch` if gap check is on | 15–25k in |

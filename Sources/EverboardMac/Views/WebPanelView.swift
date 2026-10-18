@@ -4,7 +4,7 @@ import WebKit
 
 /// Embedded web page (e.g. a Jira dashboard). Cookies persist, so you sign in once.
 struct WebPanelView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let panel: WebPanel
     @State private var web = WebHolder()
 

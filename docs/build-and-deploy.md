@@ -39,7 +39,7 @@ make install
 | What | Path |
 |---|---|
 | App | `~/Applications/Everboard.app` |
-| Secrets | `<project folder>/secrets.env` (git-ignored, chmod 600; the path is compiled into the app) |
+| Secrets | `$EVERBOARD_SECRETS`, else `<project folder>/secrets.env` (path compiled in), else `~/.config/everboard/secrets.env`; chmod 600 |
 | Settings | `~/Library/Application Support/Everboard/config.json` |
 | Database | `~/Library/Application Support/Everboard/everboard.sqlite` |
 | News preferences | `~/Library/Application Support/Everboard/news-preferences.md` |

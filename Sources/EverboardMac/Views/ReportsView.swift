@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Team health metrics, daily standup and weekly report.
 struct ReportsView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var body: some View {
         @Bindable var model = model
@@ -44,7 +44,7 @@ struct ReportsView: View {
 }
 
 private struct ReportText: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let kind: String
     let title: String
     let report: (text: String, at: Date?)?
@@ -67,7 +67,7 @@ private struct ReportText: View {
                     SpeakButton(id: "report.\(kind)", text: text)
                     Button { model.copyToClipboard(text) } label: { Label("Copy", systemImage: "doc.on.doc") }
                 }
-                Button(report == nil ? "Generate" : "Regenerate", action: generate).disabled(running || !model.secrets.hasGitLab)
+                Button(report == nil ? "Generate" : "Regenerate", action: generate).disabled(running || !model.hasCodeHost)
             }
             .padding()
             Divider()
@@ -76,10 +76,10 @@ private struct ReportText: View {
                     if let text = report?.text {
                         MarkdownView(text: text)
                     } else if running {
-                        Text("Claude is reading your GitLab and Jira activity…").foregroundStyle(.secondary)
+                        Text("Claude is reading your code-review and Jira activity…").foregroundStyle(.secondary)
                     } else {
                         EmptyState(icon: "doc.text", title: "Nothing yet",
-                                   message: model.secrets.hasGitLab ? hint : "Add your GitLab token in Settings → Accounts first.")
+                                   message: model.hasCodeHost ? hint : "Add a GitLab or GitHub account in Settings → Accounts first.")
                     }
                 }
                 .padding()
@@ -91,7 +91,7 @@ private struct ReportText: View {
 }
 
 private struct TeamHealthView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var running: Bool { model.reportRunning.contains("team") }
 
@@ -101,7 +101,7 @@ private struct TeamHealthView: View {
                 VStack(alignment: .leading) {
                     Text("Team health").font(.title2.weight(.semibold))
                     Text(model.teamHealth.map { "Last \($0.days) days · updated \($0.generatedAt.formatted(date: .abbreviated, time: .shortened))" }
-                         ?? "Per-reportee delivery metrics from GitLab")
+                         ?? "Per-reportee delivery metrics from GitLab and GitHub")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -137,7 +137,7 @@ private struct TeamHealthView: View {
                                 }
                             }
                         }
-                        Text("Orange = worth a look: cycle > 3 days, MRs > 30 files, open > 5 days, or red pipelines. Numbers can't see vacations or design work — use them to start conversations.")
+                        Text("Orange = worth a look: cycle > 3 days, changes > 30 files, open > 5 days, or red pipelines. Numbers can't see vacations or design work — use them to start conversations.")
                             .font(.caption).foregroundStyle(.tertiary)
                         if let c = health.commentary {
                             Divider()
@@ -165,7 +165,7 @@ private struct TeamHealthView: View {
 
 /// Play / pause the text aloud.
 struct SpeakButton: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let id: String
     let text: String
 

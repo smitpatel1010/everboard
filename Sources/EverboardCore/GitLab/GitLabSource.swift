@@ -1,20 +1,12 @@
 import Foundation
 
-/// Polls GitLab: my MRs (+ head pipelines), review requests, reportees' MRs, to-dos and pipelines I triggered.
+/// Polls one GitLab account: my MRs (+ head pipelines), review requests, reportees' MRs, to-dos and pipelines I triggered.
 public struct GitLabSource: DataSource {
-    public let id = "gitlab"
-    public let displayName = "GitLab"
     public let interval: TimeInterval
     let client: GitLabClient
-
-    public enum Scope {
-        public static let mine = "gitlab.mr.mine"
-        public static let review = "gitlab.mr.review"
-        public static let assigned = "gitlab.mr.assigned"
-        public static let reportees = "gitlab.mr.reportees"
-        public static let todos = "gitlab.todos"
-        public static let pipelinesPrefix = "gitlab.pipelines."
-    }
+    public var account: CodeHostAccount { client.account }
+    public var id: String { account.id }
+    public var displayName: String { account.displayName }
 
     public init(client: GitLabClient, interval: TimeInterval) {
         self.client = client
@@ -24,27 +16,30 @@ public struct GitLabSource: DataSource {
     public func fetch(context: FetchContext) async throws -> [ScopeResult] {
         let me = try await currentUser(context)
         let base = client.baseURL.absoluteString
+        let keep = { (mr: GQLMergeRequest) in account.includes(path: mr.project.fullPath) }
 
         let mine = try await client.myMergeRequests()
+        let authored = mine.authored.filter(keep)
         var results = [
-            ScopeResult(scope: Scope.mine, mode: .replace, items: mine.authored.map { Self.item($0, kind: "mine", base: base) }),
-            ScopeResult(scope: Scope.review, mode: .replace, items: mine.reviewRequested.map { Self.item($0, kind: "review", base: base) }),
-            ScopeResult(scope: Scope.assigned, mode: .replace, items: mine.assigned.map { Self.item($0, kind: "assigned", base: base) }),
+            ScopeResult(scope: account.scope(.mine), mode: .replace, items: authored.map { item($0, kind: "mine", base: base) }),
+            ScopeResult(scope: account.scope(.review), mode: .replace, items: mine.reviewRequested.filter(keep).map { item($0, kind: "review", base: base) }),
+            ScopeResult(scope: account.scope(.assigned), mode: .replace, items: mine.assigned.filter(keep).map { item($0, kind: "assigned", base: base) }),
         ]
 
         let usernames = context.config.reportees.compactMap(\.username)
         if !usernames.isEmpty {
             let users = try await client.openMergeRequests(byUsernames: usernames)
-            let items = users.flatMap { u in u.authoredMergeRequests.nodes.map { Self.item($0, kind: "reportee", base: base) } }
-            results.append(ScopeResult(scope: Scope.reportees, mode: .replace, items: items))
+            let items = users.flatMap { u in u.authoredMergeRequests.nodes.filter(keep).map { item($0, kind: "reportee", base: base) } }
+            results.append(ScopeResult(scope: account.scope(.reportees), mode: .replace, items: items))
         } else {
-            results.append(ScopeResult(scope: Scope.reportees, mode: .replace, items: []))
+            results.append(ScopeResult(scope: account.scope(.reportees), mode: .replace, items: []))
         }
 
-        results.append(ScopeResult(scope: Scope.todos, mode: .replace, items: try await client.todos().map(Self.item)))
+        let todos = try await client.todos().filter { account.includes(path: $0.project?.pathWithNamespace ?? "") }
+        results.append(ScopeResult(scope: account.scope(.todos), mode: .replace, items: todos.map(item)))
 
         // Pipelines I triggered, across projects I'm active in.
-        let projectIDs = try await activeProjects(me: me, mrs: mine.authored, context: context)
+        let projectIDs = try await activeProjects(me: me, mrs: authored, context: context)
         let since = Date().addingTimeInterval(-24 * 3600)
         try await withThrowingTaskGroup(of: ScopeResult?.self) { group in
             for pid in projectIDs {
@@ -52,8 +47,9 @@ public struct GitLabSource: DataSource {
                     // One flaky project shouldn't fail the whole poll.
                     guard let pipelines = try? await client.myPipelines(projectId: pid, username: me.username, updatedAfter: since) else { return nil }
                     let path = await projectPath(pid, context: context)
-                    return ScopeResult(scope: Scope.pipelinesPrefix + "p\(pid)", mode: .accumulate,
-                                       items: pipelines.map { Self.item($0, projectPath: path) })
+                    guard account.includes(path: path) else { return nil }
+                    return ScopeResult(scope: account.scope(.pipelines) + "p\(pid)", mode: .accumulate,
+                                       items: pipelines.map { item($0, projectPath: path) })
                 }
             }
             for try await r in group { if let r { results.append(r) } }
@@ -64,63 +60,24 @@ public struct GitLabSource: DataSource {
     // MARK: Rules
 
     public func events(for change: ItemChange, config: AppConfig) -> [AppEvent] {
-        let new = change.new
-        switch change.scope {
-        case Scope.mine, Scope.review, Scope.assigned:
-            // Head pipeline turned red (or a newly seen MR is already red).
-            guard new["pipelineStatus"] == "failed", let pid = new["pipelineId"] else { return [] }
-            let old = change.old
-            if let old, old["pipelineId"] == pid, old["pipelineStatus"] == "failed" { return [] }
-            return [AppEvent(id: "pipeline.failed:\(pid)", ts: new.updatedAt ?? Date(), category: .pipelineFailedMR,
-                             title: "Pipeline failed: \(new.title)",
-                             body: "\(new["projectPath"] ?? "") · \(new["sourceBranch"] ?? "")",
-                             url: new["pipelineUrl"] ?? new.url)]
-
-        case Scope.reportees:
-            // Only MRs created recently: avoids a burst when a reportee is first added to the list.
-            guard !change.everSeen, let created = new.createdAt, created > Date().addingTimeInterval(-3 * 86400) else { return [] }
-            return [AppEvent(id: "mr.new:\(new.id)", ts: created, category: .reporteeNewMR,
-                             title: "\(new["authorName"] ?? new.author ?? "Reportee") opened an MR",
-                             body: "\(new.title)\n\(new["projectPath"] ?? "")", url: new.url)]
-
-        case Scope.todos:
-            guard !change.everSeen else { return [] }
-            let action = new["action"] ?? ""
-            let category: EventCategory
-            switch action {
-            case "review_requested": category = .todoReview
-            case "mentioned", "directly_addressed": category = .todoMention
-            case "build_failed": return [] // covered by the pipeline rule with a better message
-            default: category = .todoOther
-            }
-            return [AppEvent(id: "todo:\(new.id)", ts: new.createdAt ?? Date(), category: category,
-                             title: new.subtitle, body: new.title, url: new.url)]
-
-        default:
-            guard change.scope.hasPrefix(Scope.pipelinesPrefix), new.status == "failed" else { return [] }
-            if let old = change.old, old.status == "failed" { return [] }
-            return [AppEvent(id: "pipeline.failed:\(new["pipelineId"] ?? new.id)", ts: new.updatedAt ?? Date(),
-                             category: .pipelineFailedTriggered,
-                             title: "Your pipeline failed on \(new["ref"] ?? "?")",
-                             body: new["projectPath"] ?? "", url: new.url)]
-        }
+        CodeHostRules.events(for: change, account: account)
     }
 
     // MARK: Helpers
 
     private func currentUser(_ context: FetchContext) async throws -> GitLabUser {
-        if let json = await context.value("gitlab.me"),
+        if let json = await context.value("\(id).me"),
            let user = try? JSONDecoder().decode(GitLabUser.self, from: Data(json.utf8)) { return user }
-        let user = try await client.currentUser()
-        await context.setValue("gitlab.me", String(decoding: try JSONEncoder().encode(user), as: UTF8.self))
+        let user = try await client.gitlabUser()
+        await context.setValue("\(id).me", String(decoding: try JSONEncoder().encode(user), as: UTF8.self))
         return user
     }
 
     /// Project ids to watch for my pipelines: open MRs + recent pushes (refreshed every 30 min) + pinned.
     private func activeProjects(me: GitLabUser, mrs: [GQLMergeRequest], context: FetchContext) async throws -> [String] {
         var ids = mrs.map { GitLabID.numeric($0.project.id) }
-        let cacheKey = "gitlab.activeProjects"
-        let stampKey = "gitlab.activeProjects.at"
+        let cacheKey = "\(id).activeProjects"
+        let stampKey = "\(id).activeProjects.at"
         let stamp = await context.value(stampKey).flatMap(Dates.parseISO) ?? .distantPast
         var pushed = (await context.value(cacheKey))?.split(separator: ",").map(String.init) ?? []
         if Date().timeIntervalSince(stamp) > 30 * 60 {
@@ -131,34 +88,37 @@ public struct GitLabSource: DataSource {
             }
         }
         ids += pushed
-        for path in context.config.pinnedProjects {
-            let key = "gitlab.pinned.\(path)"
-            if let id = await context.value(key) { ids.append(id); continue }
+        for path in PinnedProjects.paths(context.config.pinnedProjects, for: account) {
+            let key = "\(id).pinned.\(path)"
+            if let pid = await context.value(key) { ids.append(pid); continue }
+            guard await PinnedProjects.shouldLookUp(path, account: account, context: context) else { continue }
             if let p = try? await client.project(path) {
                 await context.setValue(key, String(p.id))
-                await context.setValue("gitlab.project.\(p.id)", p.pathWithNamespace)
+                await context.setValue("\(id).project.\(p.id)", p.pathWithNamespace)
                 ids.append(String(p.id))
+            } else {
+                await PinnedProjects.recordMiss(path, account: account, context: context)
             }
         }
-        for mr in mrs { await context.setValue("gitlab.project.\(GitLabID.numeric(mr.project.id))", mr.project.fullPath) }
+        for mr in mrs { await context.setValue("\(id).project.\(GitLabID.numeric(mr.project.id))", mr.project.fullPath) }
         var unique: [String] = []
         for id in ids where !unique.contains(id) { unique.append(id) }
         return unique
     }
 
-    private func projectPath(_ id: String, context: FetchContext) async -> String {
-        if let p = await context.value("gitlab.project.\(id)") { return p }
-        if let p = try? await client.project(id) {
-            await context.setValue("gitlab.project.\(id)", p.pathWithNamespace)
+    private func projectPath(_ pid: String, context: FetchContext) async -> String {
+        if let p = await context.value("\(id).project.\(pid)") { return p }
+        if let p = try? await client.project(pid) {
+            await context.setValue("\(id).project.\(pid)", p.pathWithNamespace)
             return p.pathWithNamespace
         }
-        return "project \(id)"
+        return "project \(pid)"
     }
 
-    static func item(_ mr: GQLMergeRequest, kind: String, base: String) -> FeedItem {
+    func item(_ mr: GQLMergeRequest, kind: String, base: String) -> FeedItem {
         let projectId = GitLabID.numeric(mr.project.id)
         var attrs: [String: String] = [
-            "projectId": projectId, "projectPath": mr.project.fullPath, "iid": mr.iid,
+            "account": account.id, "projectId": projectId, "projectPath": mr.project.fullPath, "iid": mr.iid,
         ]
         attrs["sourceBranch"] = mr.sourceBranch
         attrs["targetBranch"] = mr.targetBranch
@@ -180,13 +140,13 @@ public struct GitLabSource: DataSource {
         }
         let keys = JiraKeys.find(in: [mr.title, mr.sourceBranch])
         if !keys.isEmpty { attrs["jiraKeys"] = keys.joined(separator: ",") }
-        return FeedItem(id: "gitlab.mr:\(projectId):\(mr.iid)", source: "gitlab", kind: "mr.\(kind)",
+        return FeedItem(id: "\(account.id).mr:\(projectId):\(mr.iid)", source: "gitlab", kind: "mr.\(kind)",
                         title: mr.title, subtitle: "\(mr.project.fullPath) !\(mr.iid)", url: mr.webUrl,
                         status: mr.headPipeline?.status.lowercased(), author: mr.author?.username,
                         createdAt: mr.createdAt, updatedAt: mr.updatedAt, attrs: attrs)
     }
 
-    static func item(_ todo: GitLabTodo) -> FeedItem {
+    func item(_ todo: GitLabTodo) -> FeedItem {
         let who = todo.author?.name ?? "Someone"
         let what: String
         switch todo.actionName {
@@ -200,21 +160,21 @@ public struct GitLabSource: DataSource {
         case "marked": what = "\(who) added a to-do"
         default: what = todo.actionName.replacingOccurrences(of: "_", with: " ").capitalized
         }
-        var attrs = ["action": todo.actionName]
+        var attrs = ["account": account.id, "action": todo.actionName, "todoId": String(todo.id)]
         attrs["projectPath"] = todo.project?.pathWithNamespace
         attrs["targetType"] = todo.targetType
         if let body = todo.body { attrs["body"] = String(body.prefix(300)) }
-        return FeedItem(id: "gitlab.todo:\(todo.id)", source: "gitlab", kind: "todo",
+        return FeedItem(id: "\(account.id).todo:\(todo.id)", source: "gitlab", kind: "todo",
                         title: todo.target?.title ?? todo.body ?? "", subtitle: what, url: todo.targetUrl,
                         status: todo.actionName, author: todo.author?.username,
                         createdAt: todo.createdAt, updatedAt: todo.createdAt, attrs: attrs)
     }
 
-    static func item(_ p: GitLabPipeline, projectPath: String) -> FeedItem {
-        var attrs = ["pipelineId": String(p.id), "projectId": String(p.projectId), "projectPath": projectPath]
+    func item(_ p: GitLabPipeline, projectPath: String) -> FeedItem {
+        var attrs = ["account": account.id, "pipelineId": String(p.id), "projectId": String(p.projectId), "projectPath": projectPath]
         attrs["ref"] = p.ref
         attrs["trigger"] = p.source
-        return FeedItem(id: "gitlab.pipeline:\(p.id)", source: "gitlab", kind: "pipeline",
+        return FeedItem(id: "\(account.id).pipeline:\(p.id)", source: "gitlab", kind: "pipeline",
                         title: "\(projectPath) · \(p.ref ?? "")", subtitle: "#\(p.iid.map(String.init) ?? String(p.id)) \(p.source ?? "")",
                         url: p.webUrl, status: p.status, createdAt: p.createdAt, updatedAt: p.updatedAt, attrs: attrs)
     }

@@ -11,10 +11,15 @@ public struct ClaudeRequest: Sendable {
     public var timeout: TimeInterval
     /// Label for the usage dashboard, e.g. "news.brief".
     public var feature: String
+    /// Names the feature knows appear in the prompt (comment authors etc.), pseudonymised when that's on.
+    public var people: [String] = []
+    /// Filled in by `PrivacyClaudeRunner`: what was masked before sending, by kind.
+    public var redactions: [String: Int] = [:]
 
     public init(prompt: String, systemPrompt: String? = nil, jsonSchema: String? = nil, tools: [String] = [],
-                model: String? = nil, timeout: TimeInterval = 180, feature: String = "other") {
+                model: String? = nil, timeout: TimeInterval = 180, feature: String = "other", people: [String] = []) {
         self.feature = feature
+        self.people = people
         self.prompt = prompt
         self.systemPrompt = systemPrompt
         self.jsonSchema = jsonSchema
@@ -29,6 +34,13 @@ public struct ClaudeResponse: Sendable {
     public var structured: JSONValue?
     public var costUSD: Double?
     public var usage: ClaudeUsage = ClaudeUsage()
+
+    public init(text: String, structured: JSONValue? = nil, costUSD: Double? = nil, usage: ClaudeUsage = ClaudeUsage()) {
+        self.text = text
+        self.structured = structured
+        self.costUSD = costUSD
+        self.usage = usage
+    }
 }
 
 /// Token accounting reported by `claude -p --output-format json`.
@@ -73,12 +85,14 @@ public enum ClaudeError: Error, LocalizedError {
     case notFound(String)
     case failed(String)
     case timedOut
+    case blocked(String)
 
     public var errorDescription: String? {
         switch self {
         case .notFound(let p): return "claude CLI not found at \(p) — set its path in Settings"
         case .failed(let m): return "claude failed: \(m)"
         case .timedOut: return "claude timed out"
+        case .blocked(let m): return m
         }
     }
 }
@@ -136,7 +150,7 @@ public struct ClaudeCLIRunner: ClaudeRunning {
         p.currentDirectoryURL = work
         var env = ProcessInfo.processInfo.environment
         // Claude never needs our API tokens.
-        for key in Secrets.Key.allCases { env.removeValue(forKey: key.rawValue) }
+        for key in env.keys where Secrets.isSensitiveEnvKey(key) { env.removeValue(forKey: key) }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         env["PATH"] = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", env["PATH"] ?? ""].joined(separator: ":")
         p.environment = env

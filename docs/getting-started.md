@@ -7,7 +7,7 @@
 | macOS 14 Sonoma or later | SwiftUI APIs used by the app | — |
 | Xcode Command Line Tools | Swift compiler and macOS SDK | `xcode-select --install` (full Xcode works too) |
 | `claude` CLI *(optional)* | All AI features | Install Claude Code and run `claude` once to sign in |
-| GitLab and/or Jira Cloud tokens *(optional)* | Work data | See below |
+| GitLab, GitHub and/or Jira Cloud tokens *(optional)* | Work data | See below |
 
 Without any tokens, the World & Tech news brief still works. You can also browse sample data with `--demo`.
 
@@ -21,9 +21,33 @@ open -e secrets.env
 
 - **GitLab.** In your avatar menu, go to **Preferences → Access tokens**. Create a token with the `read_api` scope, or `api` if you want the in-app actions (approve, retry pipeline, comment, mark to-do done). Set `GITLAB_URL` to `https://gitlab.com` or your company's GitLab. It must be HTTPS.
 - **Jira Cloud.** Create a token at <https://id.atlassian.com/manage-profile/security/api-tokens>, then set `JIRA_URL=https://<site>.atlassian.net` and `JIRA_EMAIL`. Some organisations disable API tokens; if Jira returns 401/403, ask your admin.
-- **GitHub** *(optional).* Any classic token with no scopes raises the rate limit for the trending-repos news source.
+- **GitHub.** Create a classic token at **Settings → Developer settings → Personal access tokens** with `repo` (or `public_repo` for public work only) and `notifications`. Set `GITHUB_URL=https://github.com`, or your GitHub Enterprise Server URL, and `GITHUB_TOKEN`. Fine-grained tokens work for pull requests and Actions, but GitHub doesn't let them read notifications, so the To-dos tab stays empty. Leave `GITHUB_URL` empty and the token only raises the rate limit for the trending-repos news source.
+- **Only some groups or orgs.** `GITLAB_ORGS=platform,infra/tools` or `GITHUB_ORGS=my-org` keeps just those (and their subgroups). Handy when one token can see both work and personal projects.
 
-The app reads `secrets.env` from the project folder it was built from. That path is compiled in, so if you move the folder, run `make install` again. The command-line tool also accepts the same names as environment variables.
+### More than one account
+
+Add as many accounts as you need by putting a name between the host and the setting:
+
+```bash
+GITLAB_URL=https://gitlab.com            # default GitLab account
+GITLAB_TOKEN=...
+GITLAB_WORK_URL=https://gitlab.example.com
+GITLAB_WORK_TOKEN=...
+GITHUB_URL=https://github.com
+GITHUB_TOKEN=...
+GITHUB_OSS_TOKEN=...                     # URL defaults to github.com
+GITHUB_OSS_ORGS=my-oss-org
+```
+
+Each account is polled on its own and shows up with its own status chip ("GitLab · work"). Everything else (the Merge Requests and Pipelines screens, notifications, briefs, reports, search) combines all accounts. A reportee's GitLab username is used on every GitLab account, and their GitHub login on every GitHub account.
+
+Everboard looks for the secrets file in this order and uses the first one that exists:
+
+1. `$EVERBOARD_SECRETS`, if set (any path). Handy for the CLI; apps opened from Finder don't see your shell's variables.
+2. `secrets.env` in the project folder the app was built from. That path is compiled in, so if you move the folder, run `make install` again.
+3. `~/.config/everboard/secrets.env` (or `$XDG_CONFIG_HOME/everboard/secrets.env`). Use this to keep secrets out of the source tree entirely.
+
+Settings → Accounts shows which file is in use. Any value missing from the file is also read from an environment variable of the same name.
 
 ## 3. Build and install
 
@@ -45,8 +69,8 @@ Work meetings only show up if your work calendar is in macOS Calendar. To add it
 
 ## 5. Configure (Settings)
 
-1. **Accounts:** click **Check connections** to confirm both services respond.
-2. **Team:** paste your reportees' emails. Everboard looks up their GitLab usernames; if a lookup fails, type the username yourself.
+1. **Accounts:** check every account is listed, then click **Check connections** to confirm each one responds.
+2. **Team:** paste your reportees' emails. Everboard looks up their GitLab usernames and GitHub logins; if a lookup fails, type the username yourself.
 3. **Jira:** click **Load favourites**, then **Watch** the filters you care about. For each filter, choose whether new issues and/or status changes should notify you.
 4. **Web panels:** add Jira dashboards or any other page. Sign in once inside the panel and it remembers you.
 5. **Notifications:** choose which categories are urgent; everything else is batched.
@@ -60,4 +84,4 @@ swift run everboard-cli poll --dry-run    # one fetch, printed, nothing saved
 tail -f ~/Library/Logs/Everboard.log      # what the app is doing
 ```
 
-If GitLab is behind a VPN, the menu shows "GitLab unreachable — VPN?" until you connect. After that it recovers on its own.
+If a self-hosted GitLab is behind a VPN, the menu shows "GitLab unreachable — VPN?" until you connect. After that it recovers on its own.

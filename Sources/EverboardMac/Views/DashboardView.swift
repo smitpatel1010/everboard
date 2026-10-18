@@ -2,16 +2,19 @@ import EverboardCore
 import SwiftUI
 
 struct DashboardView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var body: some View {
         @Bindable var model = model
         NavigationSplitView {
             List(selection: $model.selection) {
+                Section {
+                    Label("Home", systemImage: "house").tag(SidebarItem.home)
+                }
                 Section("Work") {
                     Label("Inbox", systemImage: "tray").badge(model.unread).tag(SidebarItem.inbox)
-                    Label("Merge Requests", systemImage: "arrow.triangle.pull")
-                        .badge(model.items.review.count).tag(SidebarItem.mergeRequests)
+                    Label(model.changesTitle, systemImage: "arrow.triangle.pull")
+                        .badge(model.items.reviewReady.count).tag(SidebarItem.mergeRequests)
                     Label("Pipelines", systemImage: "gearshape.2")
                         .badge(model.items.pipelines.filter { $0.status == "failed" && ($0.updatedAt ?? .distantPast) > Date().addingTimeInterval(-86400) }.count)
                         .tag(SidebarItem.pipelines)
@@ -30,6 +33,7 @@ struct DashboardView: View {
                     Label("World & Tech", systemImage: "globe").tag(SidebarItem.worldBrief)
                 }
                 Section {
+                    Label("AI Activity", systemImage: "lock.shield").tag(SidebarItem.aiActivity)
                     Label("Settings", systemImage: "gearshape").tag(SidebarItem.settings)
                 }
             }
@@ -40,7 +44,7 @@ struct DashboardView: View {
                         let h = model.health[key]!
                         HStack(spacing: 5) {
                             Circle().fill(h.isHealthy ? .green : (h == .idle ? .gray : .orange)).frame(width: 7, height: 7)
-                            Text(h.isHealthy ? "\(key.capitalized) · \(h.label)" : h.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            Text(h.isHealthy ? "\(model.sourceName(key)) · \(h.label)" : h.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                 }
@@ -56,17 +60,20 @@ struct DashboardView: View {
                     }
                     ToolbarItem {
                         Button { model.refreshAll() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                            .help("Refresh GitLab and Jira now")
+                            .help("Refresh every account now")
                     }
                 }
         }
         .sheet(item: $model.aiPanel) { panel in
-            AIPanelSheet(panel: panel).environment(model)
+            AIPanelSheet(panel: panel).environment(model).environment(\.refLinker, model.refLinker)
         }
+        .environment(\.refLinker, model.refLinker)
     }
 
     @ViewBuilder var detail: some View {
         switch model.selection {
+        case .home: HomeView()
+        case .aiActivity: AIActivityView()
         case .inbox: InboxView()
         case .mergeRequests: MergeRequestsView()
         case .pipelines: PipelinesView()
@@ -88,7 +95,7 @@ struct DashboardView: View {
 // MARK: - Inbox
 
 struct InboxView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var unreadOnly = false
     @State private var filter: String = "all"
 
@@ -103,7 +110,7 @@ struct InboxView: View {
             HStack {
                 Picker("", selection: $filter) {
                     Text("All").tag("all")
-                    Text("GitLab").tag("gitlab")
+                    Text("Code").tag("code")
                     Text("Jira").tag("jira")
                     Text("News").tag("news")
                     Text("Briefs").tag("brief")

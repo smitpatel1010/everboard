@@ -2,22 +2,22 @@ import Foundation
 
 /// GitLab REST v4 + GraphQL. Needs a PAT with `read_api`.
 public struct GitLabClient: Sendable {
-    public let baseURL: URL
+    public let account: CodeHostAccount
+    public var baseURL: URL { account.webURL }
     let http: HTTPClient
 
-    public init(baseURL: URL, token: String, session: URLSession = .everboard) {
-        self.baseURL = baseURL
-        self.http = HTTPClient(baseURL: baseURL, headers: ["PRIVATE-TOKEN": token], session: session)
+    public init(account: CodeHostAccount, session: URLSession = .everboard) {
+        self.account = account
+        self.http = HTTPClient(baseURL: account.webURL, headers: ["PRIVATE-TOKEN": account.token], session: session)
     }
 
-    public init?(secrets: Secrets, session: URLSession = .everboard) {
-        guard let url = secrets.gitlabBaseURL, let token = secrets[.gitlabToken] else { return nil }
-        self.init(baseURL: url, token: token, session: session)
+    public init(baseURL: URL, token: String, session: URLSession = .everboard) {
+        self.init(account: CodeHostAccount(kind: .gitlab, webURL: baseURL, token: token), session: session)
     }
 
     // MARK: REST
 
-    public func currentUser() async throws -> GitLabUser {
+    public func gitlabUser() async throws -> GitLabUser {
         try await http.json(GitLabUser.self, "GET", "/api/v4/user")
     }
 
@@ -50,7 +50,7 @@ public struct GitLabClient: Sendable {
     }
 
     /// Email → user. Non-admin tokens only match *public* emails, so fall back to the email's local part.
-    public func resolveUser(email: String) async throws -> GitLabUser? {
+    public func findUser(email: String) async throws -> GitLabUser? {
         let byEmail = try await http.json([GitLabUser].self, "GET", "/api/v4/users", query: ["search": email])
         if byEmail.count == 1 { return byEmail[0] }
         if let exact = byEmail.first(where: { $0.email?.lowercased() == email.lowercased() }) { return exact }
@@ -176,4 +176,102 @@ public struct GitLabClient: Sendable {
             """ }, variables: ["usernames": .array(usernames.map { .string($0) })])
         return r.users.nodes
     }
+}
+
+// MARK: - CodeHostClient
+
+extension GitLabClient: CodeHostClient {
+    public var writeScopeHint: String { "GitLab actions need a token with the `api` scope (read_api is read-only)." }
+
+    public func currentUser() async throws -> CodeHostUser {
+        let u = try await gitlabUser()
+        return CodeHostUser(id: String(u.id), username: u.username, name: u.name)
+    }
+
+    public func resolveUser(email: String) async throws -> CodeHostUser? {
+        let u = try await findUser(email: email)
+        return u.map { CodeHostUser(id: String($0.id), username: $0.username, name: $0.name) }
+    }
+
+    private func ids(_ item: FeedItem) throws -> (String, String) {
+        guard let pid = item["projectId"], let iid = item["iid"] else { throw HTTPError.notConfigured("Not a GitLab merge request") }
+        return (pid, iid)
+    }
+
+    public func changeDetail(_ item: FeedItem) async throws -> ChangeDetail {
+        let (pid, iid) = try ids(item)
+        let d = try await mergeRequest(projectId: pid, iid: iid)
+        return ChangeDetail(title: d.title, description: d.description, sourceBranch: d.sourceBranch, targetBranch: d.targetBranch,
+                            authorName: d.author?.name)
+    }
+
+    public func changeDiffs(_ item: FeedItem) async throws -> [FileDiff] {
+        let (pid, iid) = try ids(item)
+        return try await mergeRequestDiffs(projectId: pid, iid: iid).map {
+            FileDiff(oldPath: $0.oldPath, newPath: $0.newPath, diff: $0.diff, newFile: $0.newFile ?? false, deletedFile: $0.deletedFile ?? false)
+        }
+    }
+
+    public func approve(_ item: FeedItem) async throws {
+        let (pid, iid) = try ids(item)
+        try await approve(projectId: pid, iid: iid)
+    }
+
+    public func comment(_ item: FeedItem, body: String) async throws {
+        let (pid, iid) = try ids(item)
+        try await comment(projectId: pid, iid: iid, body: body)
+    }
+
+    public func retryPipeline(_ item: FeedItem) async throws {
+        guard let pid = item["projectId"], let pipeline = item["pipelineId"] else { throw HTTPError.notConfigured("No pipeline to retry") }
+        try await retryPipeline(projectId: pid, pipelineId: pipeline)
+    }
+
+    public func markTodoDone(_ item: FeedItem) async throws {
+        // Items stored by older versions have no todoId attr; the id ends in it.
+        let id = item["todoId"] ?? String(item.id.split(separator: ":").last ?? "")
+        try await markTodoDone(id: id)
+    }
+
+    func record(_ mr: GitLabMR) -> ChangeRecord {
+        ChangeRecord(id: account.id + ".mr:\(mr.projectId):\(mr.iid)", ref: mr.ref, title: mr.title, url: mr.webUrl, state: mr.state,
+                     createdAt: mr.createdAt, mergedAt: mr.mergedAt, updatedAt: mr.updatedAt, authorUsername: mr.author?.username,
+                     authorName: mr.author?.name, comments: mr.userNotesCount,
+                     filesChanged: mr.changesCount.flatMap { Int($0.replacingOccurrences(of: "+", with: "")) })
+    }
+
+    /// `references.full` is "group/project!12"; drop MRs outside the account's groups.
+    private func inScope(_ mr: GitLabMR) -> Bool {
+        guard !account.orgs.isEmpty else { return true }
+        guard let full = mr.references?.full, let bang = full.lastIndex(of: "!") else { return false }
+        return account.includes(path: String(full[..<bang]))
+    }
+
+    public func searchChanges(_ text: String, limit: Int) async throws -> [ChangeRecord] {
+        try await searchMergeRequests(text, limit: limit).filter(inScope).map(record)
+    }
+
+    public func changes(author: String?, reviewer: String?, state: ChangeState, since: Date, withSize: Bool) async throws -> [ChangeRecord] {
+        let s: String
+        switch state {
+        case .merged: s = "merged"
+        case .open: s = "opened"
+        case .all: s = "all"
+        }
+        var mrs = try await mergeRequests(author: author, reviewer: reviewer, state: s, updatedAfter: since).filter(inScope)
+        if state == .merged { mrs = mrs.filter { ($0.mergedAt ?? .distantPast) >= since } }
+        if withSize {
+            // `changes_count` is only on the single-MR endpoint; cap the extra calls.
+            for i in mrs.indices.prefix(25) {
+                if let full = try? await mergeRequestStats(projectId: mrs[i].projectId, iid: mrs[i].iid) { mrs[i] = full }
+            }
+        }
+        return mrs.map(record)
+    }
+
+    public func searchPageURL(_ text: String) -> String {
+        "\(baseURL.absoluteString)/dashboard/merge_requests?scope=all&search=\(text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? text)"
+    }
+
+    public func changeURL(path: String, number: String) -> String { "\(baseURL.absoluteString)/\(path)/-/merge_requests/\(number)" }
 }

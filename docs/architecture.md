@@ -9,7 +9,9 @@ everboard/
 │   ├── EverboardCore/            ← all logic; no UI code, could be reused by an iPhone app
 │   │   ├── Config/               AppConfig (settings JSON), Secrets (secrets.env)
 │   │   ├── Engine/               FeedItem, AppEvent, Differ, Store (SQLite), Poller
+│   │   ├── CodeHost/             Accounts, the CodeHostClient protocol, shared rules
 │   │   ├── GitLab/               REST + GraphQL client, GitLabSource
+│   │   ├── GitHub/               REST + GraphQL client, GitHubSource
 │   │   ├── Jira/                 REST v3 client, JiraSource, ADF helpers
 │   │   ├── AI/                   ClaudeCLIRunner, WorkAssistant, Reports, Usage
 │   │   ├── News/                 feed parsing, fetchers, clustering, brief, follow/ask
@@ -32,7 +34,7 @@ everboard/
 
 What happens when one of your pipelines turns red:
 
-1. **The `Poller`** (`Engine/Poller.swift`) is an `actor` that runs one loop per source. Every `interval` seconds (60 for GitLab) it calls `source.fetch(context:)`.
+1. **The `Poller`** (`Engine/Poller.swift`) is an `actor` that runs one loop per source: one per GitLab/GitHub account, plus Jira. Every `interval` seconds (60 for code hosts) it calls `source.fetch(context:)`.
 
 2. **`GitLabSource.fetch`** (`GitLab/GitLabSource.swift`) makes:
    - one GraphQL query for your authored, review-requested and assigned MRs, each with its `headPipeline`
@@ -40,11 +42,13 @@ What happens when one of your pipelines turns red:
    - `GET /todos`
    - `GET /projects/:id/pipelines?username=you` for each project you're active in
 
-   It returns `[ScopeResult]`: named lists of normalised `FeedItem`s, such as `gitlab.mr.mine` and `gitlab.pipelines.p42`.
+   It returns `[ScopeResult]`: named lists of normalised `FeedItem`s, such as `gitlab.mr.mine` and `gitlab.pipelines.p42`. Scopes are prefixed with the account id (`gitlab`, `github`, `gitlab.work`, …).
+
+   `GitHubSource` does the same for a GitHub account: one GraphQL query with a `search` per list (yours, review-requested, assigned, one per reportee), `GET /notifications` for to-dos, and Actions runs you triggered in repos you're active in. Its items use the same scopes and attrs (`pipelineStatus`, `approvedBy`, `mergeStatus`, …) as GitLab's, so the rules (`CodeHostRules`), the UI and the AI features don't care which host an item came from.
 
 3. **`Engine.process`** loads the previous state of each scope from the `Store`: which items were present, which were ever seen, and whether the scope has synced before. It then calls the pure function **`Differ.diff`**, which pairs each new item with its old version as an `ItemChange`.
 
-4. **Rules.** For each change the differ calls `source.events(for:config:)`. `GitLabSource` checks whether `pipelineStatus` is now `failed` when it wasn't before for that pipeline id. If so, it emits an `AppEvent` with the deterministic id `pipeline.failed:<pipelineId>`.
+4. **Rules.** For each change the differ calls `source.events(for:config:)`. `CodeHostRules` checks whether `pipelineStatus` is now `failed` when it wasn't before for that pipeline id. If so, it emits an `AppEvent` with the deterministic id `pipeline.failed:<pipelineId>`.
 
 5. **`Store.apply`** upserts the items and inserts events with `INSERT OR IGNORE`. A deterministic id means the same failure seen through two paths (your MR, and "pipelines I triggered") is stored once. `apply` returns only the events that are truly new.
 
@@ -73,7 +77,7 @@ What happens when one of your pipelines turns red:
 | `ItemChange` | `old` vs `new`, with `wasPresent` and `everSeen` flags |
 | `AppEvent` | Something that happened. It shows in the Inbox and may notify. It has an `EventCategory`, which drives notification toggles and icons. |
 | `AppConfig` | User settings, saved as JSON. Decoding is lenient, so new fields don't break old files. |
-| `Secrets` | Tokens and URLs from `secrets.env`, with environment variables as a fallback |
+| `Secrets` | Tokens and URLs from `secrets.env` (located by `AppInfo.secretsURL`), with environment variables as a fallback |
 
 SQLite tables (`Store.swift` migrations):
 - `items`: snapshots per scope

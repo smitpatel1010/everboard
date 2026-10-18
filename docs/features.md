@@ -20,15 +20,17 @@ Open it from the menu, from the Dock while it's open, by launching the app again
 
 | Screen | What you see | Actions |
 |---|---|---|
+| **Home** (opens first) | Greeting with today's summary; tiles for reviews, your MRs, failed pipelines, Jira and unread; **Needs you** (red pipelines on your MRs, reviews oldest first, unread mentions, high-priority or due Jira issues, MRs ready to merge); today's meetings; your team's stuck MRs; Jira by status; the work brief; latest activity; the news headline; how much Claude was used today. All computed locally: Home never calls Claude itself. | Click a tile to jump to its screen. Click a row to open it; right-click to summarize or digest. Join or ✨ prep a meeting. |
 | **Inbox** | Every event, grouped by day; filter by source and unread | Click to open. Right-click to mark read, snooze for a day, mute the item, or turn off that notification type. Summarize (reportee MRs) or get a Jira digest. |
-| **Merge Requests** | Review requested / Mine / Assigned / Reportees (grouped by person) / To-dos. Rows show pipeline status, approvals, comments and linked Jira keys. "May be stuck" flags MRs open more than 3 days or red for more than 1 day. | Double-click to open. Right-click to summarize with AI, **approve** (asks first), **retry pipeline**, **comment**, or mute. To-dos: **mark done**. Click a Jira key for its AI digest. |
+| **Merge Requests** | Review requested / Mine / Assigned / Reportees (grouped by person) / To-dos. Draft MRs are hidden from Review requested (and from review counts on Home and the sidebar) unless you tick **Show drafts**. Rows show pipeline status, approvals, comments and linked Jira keys. "May be stuck" flags MRs open more than 3 days or red for more than 1 day. | Double-click to open. Right-click to summarize with AI, **approve** (asks first), **retry pipeline**, **comment**, or mute. To-dos: **mark done**. Click a Jira key for its AI digest. |
 | **Pipelines** | Pipelines you triggered in the last 7 days, with failures from the last 24 hours first | Retry or open |
-| **Jira** | Assigned to me, plus one tab per watched filter | ✨ AI digest; ➜ move the issue through its workflow or comment |
+| **Jira** | Assigned to me, plus one tab per watched filter. Done issues (resolved, or in a Done-category status such as Closed or Archive) are hidden unless you tick **Show done**, which also lists issues assigned to you that finished in the last 30 days. Home, briefs and notifications only ever use open issues. | ✨ AI digest; ➜ move the issue through its workflow or comment |
 | **Work Brief** | Claude's morning brief: what needs you today, your team, FYI | Generate, Listen |
 | **Team & Reports** | **Team health** metrics for each reportee, **Daily standup**, **Weekly report** | Refresh, AI read, Copy, Listen |
 | **Web panels** | Any page you add, e.g. Jira dashboards, Grafana | Back, reload, open in browser |
 | **World & Tech** | Personal news brief (see below) | — |
-| **Settings** | Everything configurable, including **AI usage** | — |
+| **AI Activity** | Every Claude call: the exact prompt as it left your Mac (after masking), the instructions, and the reply, plus what was masked | Filter work/news, copy, clear the log |
+| **Settings** | Everything configurable, including **AI privacy** and **AI usage** | — |
 
 ## Notifications
 
@@ -37,8 +39,8 @@ Open it from the menu, from the Dock while it's open, by launching the app again
 | Pipeline failed on my MR | The head pipeline of an MR you authored, are assigned to, or were asked to review turns red | ✅ |
 | Pipeline I triggered failed | A pipeline you started, in a project you pushed to this week or pinned, fails | ✅ |
 | Reportee opened an MR | A new MR from someone in Settings → Team | |
-| Review requested / Mentioned | A new GitLab to-do of that kind | ✅ |
-| Other GitLab to-dos | Assigned, approval required, unmergeable | |
+| Review requested / Mentioned | A new GitLab to-do or GitHub notification of that kind | ✅ |
+| Other to-dos and notifications | Assigned, approval required, unmergeable | |
 | Jira assigned | An issue newly assigned to you | ✅ |
 | Jira comment / mention | A new comment on your issues, or an @mention of you | mention ✅ |
 | Filter: new / status change | Per watched filter, with its own toggles | |
@@ -55,7 +57,9 @@ Open it from the menu, from the Dock while it's open, by launching the app again
 
 ## AI features
 
-All of these run the `claude` CLI on your Mac. See [AI & token usage](ai-and-usage.md) for exactly what each one sends.
+All of these run the `claude` CLI on your Mac. See [AI & token usage](ai-and-usage.md) for exactly what each one sends, and **AI Activity** for what was actually sent.
+
+MR references (`group/project!123`, and `!123` when it matches one known MR) and Jira keys from your projects are clickable in every AI result. **Copy** puts both plain text and HTML on the clipboard, so the links survive pasting into Teams, Outlook or Confluence.
 
 | Feature | Where | When |
 |---|---|---|
@@ -92,17 +96,17 @@ Press ⌥Space in any app. A floating search panel appears over what you're doin
 **Empty box:** shows **Needs attention** (review requests, red pipelines on your MRs, unread items), **Recent** items you opened from the palette, today's **meetings** and **commands**.
 
 **Typing:**
-- **Fuzzy search** across commands, MRs (yours, review requests, your team's), GitLab to-dos, Jira issues, pipelines, inbox items, today's brief stories, live news and meetings. Matched letters are highlighted, and results are grouped and ranked.
-- **Live search:** after 3+ characters, GitLab and Jira are searched too (MRs by title, Jira by text), so you also find things Everboard isn't tracking.
+- **Fuzzy search** across commands, MRs/PRs (yours, review requests, your team's), to-dos, Jira issues, pipelines, inbox items, today's brief stories, live news and meetings. Matched letters are highlighted, and results are grouped and ranked.
+- **Live search:** after 3+ characters, every GitLab/GitHub account and Jira are searched too (MRs/PRs by title, Jira by text), so you also find things Everboard isn't tracking. On github.com the search is limited to your `…_ORGS`, or to PRs involving you.
 - **Direct jumps:** type a Jira key (`PAY-123`) to open or digest it immediately; paste a URL to open it.
-- **Fallbacks:** "Ask the news: …", "Search Jira for …", "Search GitLab MRs for …".
+- **Fallbacks:** "Ask the news: …", "Search Jira for …", "Search GitLab MRs / GitHub PRs for …" (one per account).
 
 **Scopes.** Click a chip, press **Tab** / **⇧Tab** or **⌘1–⌘8**, or type a prefix:
 
 | Prefix | Scope |
 |---|---|
 | `>` | Commands |
-| `mr ` | Merge requests (+ GitLab search) |
+| `mr ` | Merge / pull requests (+ remote search) |
 | `jira ` | Jira (+ Jira search) |
 | `pl ` | Pipelines |
 | `in ` | Inbox |
@@ -127,6 +131,15 @@ Everboard reads macOS Calendar. It finds Teams, Zoom, Meet and Webex links for t
 ## Read aloud
 
 The briefs and reports have a **Listen** button that uses on-device voices. Choose the voice and speed in Settings → General. Better voices can be downloaded in System Settings → Accessibility → Spoken Content.
+
+## AI privacy
+
+**Settings → AI privacy** controls what may leave your Mac:
+
+- **Allow work features to send data to Claude.** Off refuses every work feature before anything is sent (and skips the scheduled brief and weekly report). News keeps working.
+- **Include MR code diffs / Jira descriptions and comments / meeting notes.** With diffs off, MR summaries see file names and line counts only.
+- **Masking**, done locally before sending: secrets (tokens, keys, passwords, private keys) become `[SECRET]`; emails, people's names and your own list of words become `[EMAIL-1]`, `[PERSON-1]`, `[TERM-1]`. Claude only sees the placeholders; Everboard puts the real values back into the reply on your Mac. A "Try it" box previews the masking.
+- **Activity log**: how many days to keep the local copy of every prompt and reply (0 turns it off).
 
 ## AI usage dashboard
 

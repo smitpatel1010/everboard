@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Settings → AI usage: tokens and estimated cost of every `claude` call Everboard makes.
 struct UsageSettings: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var range = 30
     @State private var total = UsageTotals(key: "total")
     @State private var today = UsageTotals(key: "today")

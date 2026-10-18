@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The popover under the menu-bar icon.
 struct MenuBarView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -66,7 +66,7 @@ struct MenuBarView: View {
     }
 
     var attention: String? {
-        if !model.secrets.hasGitLab && !model.secrets.hasJira { return "Add your tokens in Settings → Accounts" }
+        if !model.hasCodeHost && !model.secrets.hasJira { return "Add your tokens in Settings → Accounts" }
         if let e = model.storeError { return e }
         return nil
     }
@@ -139,7 +139,7 @@ struct EventRow: View {
 
 /// Today's upcoming meetings with join + prep buttons.
 struct MeetingsSection: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var body: some View {
         let upcoming = model.calendar.today.filter { $0.end > Date() }.prefix(3)

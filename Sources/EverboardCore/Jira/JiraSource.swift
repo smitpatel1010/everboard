@@ -7,8 +7,17 @@ public struct JiraSource: DataSource {
     public let interval: TimeInterval
     let client: JiraClient
 
+    /// Open issues assigned to me. Many workflows close or archive issues without setting a resolution,
+    /// so the Done status category is excluded too (it covers "Closed", "Archive", "Done" and the like).
+    public static let assignedJQL = "assignee = currentUser() AND resolution = Unresolved AND statusCategory != Done ORDER BY updated DESC"
+
+    /// Recently finished issues assigned to me, for the Jira tab's "Show done" toggle. Kept in their own scope
+    /// (not under the "jira.assigned" prefix) so they never reach Home, briefs or notifications.
+    public static let doneJQL = "assignee = currentUser() AND (statusCategory = Done OR resolution is not EMPTY) AND updated >= -30d ORDER BY updated DESC"
+
     public enum Scope {
         public static let assigned = "jira.assigned"
+        public static let done = "jira.done"
         public static let comments = "jira.comments"
         public static let filterPrefix = "jira.filter."
     }
@@ -22,8 +31,10 @@ public struct JiraSource: DataSource {
         let me = try await myself(context)
         var results: [ScopeResult] = []
 
-        let assigned = try await client.search("assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC")
+        let assigned = try await client.search(Self.assignedJQL)
         results.append(ScopeResult(scope: Scope.assigned, mode: .replace, items: assigned.map { item($0, kind: "assigned") }))
+        let done = try await client.search(Self.doneJQL, max: 50)
+        results.append(ScopeResult(scope: Scope.done, mode: .replace, items: done.map { item($0, kind: "done") }))
 
         for f in context.config.jiraFilters {
             guard let jql = await filterJQL(f.id, context: context) else { continue }

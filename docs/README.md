@@ -18,10 +18,10 @@ Reference:
 
 ```
           every 60–120 s                     on change
-GitLab ─┐                ┌──────────┐   ┌───────────┐   ┌──────────────┐
-Jira  ──┼─► DataSource ─►│  Differ  │──►│   Store   │──►│ Notifications│
-News  ──┘   (fetch)      │ old→new  │   │ (SQLite)  │   │  + Inbox     │
-                          └──────────┘   └─────┬─────┘   └──────────────┘
+GitLab ─┐  (one source   ┌──────────┐   ┌───────────┐   ┌──────────────┐
+GitHub ─┤   per account) │  Differ  │──►│   Store   │──►│ Notifications│
+Jira  ──┼─► DataSource ─►│ old→new  │   │ (SQLite)  │   │  + Inbox     │
+News  ──┘   (fetch)      └──────────┘   └─────┬─────┘   └──────────────┘
                                                │
                                      SwiftUI reads it ──► menu bar, dashboard
                                                │

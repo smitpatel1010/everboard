@@ -60,6 +60,12 @@ final class CalendarService {
             .sorted { $0.start < $1.start }
     }
 
+    /// `--demo` only: show sample meetings without touching EventKit.
+    func seedDemo(_ meetings: [Meeting]) {
+        access = .granted
+        today = meetings
+    }
+
     var next: Meeting? { today.first { $0.end > Date() } }
     var inMeeting: Bool { today.contains { $0.isNow && $0.isBusy } }
 

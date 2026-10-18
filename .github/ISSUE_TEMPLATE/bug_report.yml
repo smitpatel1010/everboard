@@ -1,0 +1,41 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove tokens, hostnames, emails and work content from anything you paste. Screenshots from `--demo` mode are ideal.
+        Security problem? Use the repository's Security tab → "Report a vulnerability" instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [GitLab, Jira, AI / claude CLI, News brief, Notifications, Calendar, Command palette, Build / install, Other]
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `swift run everboard-cli check`
+      description: Redact hostnames and anything identifying.
+      render: text

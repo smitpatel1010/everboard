@@ -25,38 +25,38 @@ private func process(_ source: DataSource, _ results: [ScopeResult], store: Stor
     @Test func baselineEmitsNothing() async throws {
         let store = try Store.inMemory()
         let events = try await process(gitlab, [
-            ScopeResult(scope: GitLabSource.Scope.mine, mode: .replace, items: [mr("1", pipeline: "failed")]),
-            ScopeResult(scope: GitLabSource.Scope.reportees, mode: .replace, items: [mr("2", kind: "reportee")]),
+            ScopeResult(scope: gitlab.account.scope(.mine), mode: .replace, items: [mr("1", pipeline: "failed")]),
+            ScopeResult(scope: gitlab.account.scope(.reportees), mode: .replace, items: [mr("2", kind: "reportee")]),
         ], store: store)
         #expect(events.isEmpty)
     }
 
     @Test func pipelineTurningRedNotifiesOnce() async throws {
         let store = try Store.inMemory()
-        _ = try await process(gitlab, [ScopeResult(scope: GitLabSource.Scope.mine, mode: .replace, items: [mr("1", pipeline: "running")])], store: store)
-        let first = try await process(gitlab, [ScopeResult(scope: GitLabSource.Scope.mine, mode: .replace, items: [mr("1", pipeline: "failed")])], store: store)
+        _ = try await process(gitlab, [ScopeResult(scope: gitlab.account.scope(.mine), mode: .replace, items: [mr("1", pipeline: "running")])], store: store)
+        let first = try await process(gitlab, [ScopeResult(scope: gitlab.account.scope(.mine), mode: .replace, items: [mr("1", pipeline: "failed")])], store: store)
         #expect(first.map(\.id) == ["pipeline.failed:100"])
         #expect(first.first?.category == .pipelineFailedMR)
-        let again = try await process(gitlab, [ScopeResult(scope: GitLabSource.Scope.mine, mode: .replace, items: [mr("1", pipeline: "failed")])], store: store)
+        let again = try await process(gitlab, [ScopeResult(scope: gitlab.account.scope(.mine), mode: .replace, items: [mr("1", pipeline: "failed")])], store: store)
         #expect(again.isEmpty)
         // A new pipeline on the same MR failing again is a new event.
-        let retry = try await process(gitlab, [ScopeResult(scope: GitLabSource.Scope.mine, mode: .replace, items: [mr("1", pipeline: "failed", pipelineId: "101")])], store: store)
+        let retry = try await process(gitlab, [ScopeResult(scope: gitlab.account.scope(.mine), mode: .replace, items: [mr("1", pipeline: "failed", pipelineId: "101")])], store: store)
         #expect(retry.map(\.id) == ["pipeline.failed:101"])
     }
 
     @Test func samePipelineViaMRAndTriggeredPathIsDeduped() async throws {
         let store = try Store.inMemory()
-        let scopeP = GitLabSource.Scope.pipelinesPrefix + "p7"
+        let scopeP = gitlab.account.scope(.pipelines) + "p7"
         let pipeline = { (status: String) in
             FeedItem(id: "gitlab.pipeline:100", source: "gitlab", kind: "pipeline", title: "team/app · main",
                      status: status, attrs: ["pipelineId": "100", "ref": "main", "projectPath": "team/app"])
         }
         _ = try await process(gitlab, [
-            ScopeResult(scope: GitLabSource.Scope.mine, mode: .replace, items: [mr("1", pipeline: "running")]),
+            ScopeResult(scope: gitlab.account.scope(.mine), mode: .replace, items: [mr("1", pipeline: "running")]),
             ScopeResult(scope: scopeP, mode: .accumulate, items: [pipeline("running")]),
         ], store: store)
         let events = try await process(gitlab, [
-            ScopeResult(scope: GitLabSource.Scope.mine, mode: .replace, items: [mr("1", pipeline: "failed")]),
+            ScopeResult(scope: gitlab.account.scope(.mine), mode: .replace, items: [mr("1", pipeline: "failed")]),
             ScopeResult(scope: scopeP, mode: .accumulate, items: [pipeline("failed")]),
         ], store: store)
         #expect(events.count == 1)
@@ -64,7 +64,7 @@ private func process(_ source: DataSource, _ results: [ScopeResult], store: Stor
 
     @Test func reporteeNewMRNotifiesOnlyForRecentUnseen() async throws {
         let store = try Store.inMemory()
-        let scope = GitLabSource.Scope.reportees
+        let scope = gitlab.account.scope(.reportees)
         _ = try await process(gitlab, [ScopeResult(scope: scope, mode: .replace, items: [mr("1", kind: "reportee")])], store: store)
         let events = try await process(gitlab, [ScopeResult(scope: scope, mode: .replace, items: [
             mr("1", kind: "reportee"),
@@ -80,7 +80,7 @@ private func process(_ source: DataSource, _ results: [ScopeResult], store: Stor
             FeedItem(id: "gitlab.todo:\(action)", source: "gitlab", kind: "todo", title: "Fix it", subtitle: "x", attrs: ["action": action])
         }
         func category(_ a: String) -> EventCategory? {
-            gitlab.events(for: ItemChange(scope: GitLabSource.Scope.todos, old: nil, new: todo(a), wasPresent: false, everSeen: false),
+            gitlab.events(for: ItemChange(scope: gitlab.account.scope(.todos), old: nil, new: todo(a), wasPresent: false, everSeen: false),
                           config: AppConfig()).first?.category
         }
         #expect(category("review_requested") == .todoReview)

@@ -4,6 +4,10 @@ build/
 .DS_Store
 *.xcodeproj
 # Real secrets never leave this machine; the example template is committed.
+# Anchored and lower-case on purpose: an unanchored `secrets*` also matches
+# Sources/.../Secrets.swift on case-insensitive macOS file systems.
 *.env
-secrets*
-!secrets.env.example
+/secrets.env*
+!/secrets.env.example
+# Your personal leak-check denylist (company names, hosts, emails). See scripts/leakcheck.sh.
+/.leakcheck

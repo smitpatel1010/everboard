@@ -1,7 +1,7 @@
 import Foundation
 
 public enum HTTPError: Error, LocalizedError, Sendable {
-    /// DNS / connect / timeout — for GitLab this usually means the VPN is off.
+    /// DNS / connect / timeout — for a self-hosted GitLab this usually means the VPN is off.
     case unreachable(String)
     case unauthorized(Int)
     case rateLimited(retryAfter: TimeInterval?)
@@ -21,7 +21,7 @@ public enum HTTPError: Error, LocalizedError, Sendable {
     }
 }
 
-/// Thin JSON-over-HTTPS client shared by the GitLab, Jira and news fetchers.
+/// Thin JSON-over-HTTPS client shared by the GitLab, GitHub, Jira and news fetchers.
 public struct HTTPClient: Sendable {
     public let baseURL: URL?
     public let headers: [String: String]

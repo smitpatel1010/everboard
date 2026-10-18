@@ -2,16 +2,21 @@ import Foundation
 
 public struct Reportee: Codable, Hashable, Sendable, Identifiable {
     public var email: String
-    /// Resolved GitLab username; nil until resolved (or entered manually).
+    /// GitLab username (used on every GitLab account); nil until resolved or entered manually.
     public var username: String?
+    /// GitHub login (used on every GitHub account).
+    public var githubUsername: String?
     public var name: String?
     public var id: String { email.lowercased() }
 
-    public init(email: String, username: String? = nil, name: String? = nil) {
+    public init(email: String, username: String? = nil, githubUsername: String? = nil, name: String? = nil) {
         self.email = email
         self.username = username
+        self.githubUsername = githubUsername
         self.name = name
     }
+
+    public func username(on kind: CodeHostKind) -> String? { kind == .gitlab ? username : githubUsername }
 }
 
 public struct JiraFilterConfig: Codable, Hashable, Sendable, Identifiable {
@@ -44,13 +49,14 @@ public struct WebPanel: Codable, Hashable, Sendable, Identifiable {
 public struct AppConfig: Codable, Equatable, Sendable {
     public var reportees: [Reportee] = []
     public var jiraFilters: [JiraFilterConfig] = []
-    /// GitLab project paths whose pipelines (triggered by me) are always watched.
+    /// Project/repo paths (or full URLs) whose pipelines/workflow runs triggered by me are always watched.
     public var pinnedProjects: [String] = []
     /// EventCategory.rawValue → enabled. Missing keys fall back to the category default.
     public var notifications: [String: Bool] = [:]
     /// itemId → muted until. `.distantFuture` = muted forever.
     public var mutedItems: [String: Date] = [:]
 
+    /// Poll interval for every GitLab/GitHub account (the key name predates GitHub support).
     public var gitlabInterval: Double = 60
     public var jiraInterval: Double = 120
     public var newsInterval: Double = 1800
@@ -92,6 +98,26 @@ public struct AppConfig: Codable, Equatable, Sendable {
     /// 1 = Sunday … 7 = Saturday (Calendar weekday).
     public var weeklyReportWeekday = 6
     public var weeklyReportTime = "16:00"
+
+    /// Jira tab: also list done issues (recently finished assigned ones, and done ones in filters).
+    public var jiraShowDone = false
+    /// Merge Requests → Review requested: also list draft MRs.
+    public var mrShowDraftReviews = false
+
+    // AI privacy: what may be sent to Claude.
+    /// Master switch for work features (briefs, summaries, reports, meeting prep). News is unaffected.
+    public var aiWorkEnabled = true
+    public var aiRedactSecrets = true
+    public var aiRedactEmails = true
+    /// Replace people's names with [PERSON-n] placeholders; replies get the names back locally.
+    public var aiPseudonymizePeople = false
+    /// Your own words to mask (customer names, codenames, internal hosts).
+    public var aiMaskedTerms: [String] = []
+    public var aiSendDiffs = true
+    public var aiSendJiraText = true
+    public var aiSendMeetingNotes = true
+    /// Days to keep the AI activity log (exact prompts and replies). 0 = don't keep one.
+    public var aiLogDays = 14
 
     public init() {}
 
@@ -183,6 +209,17 @@ public struct AppConfig: Codable, Equatable, Sendable {
         weeklyReportEnabled = v(.weeklyReportEnabled, d.weeklyReportEnabled)
         weeklyReportWeekday = v(.weeklyReportWeekday, d.weeklyReportWeekday)
         weeklyReportTime = v(.weeklyReportTime, d.weeklyReportTime)
+        jiraShowDone = v(.jiraShowDone, d.jiraShowDone)
+        mrShowDraftReviews = v(.mrShowDraftReviews, d.mrShowDraftReviews)
+        aiWorkEnabled = v(.aiWorkEnabled, d.aiWorkEnabled)
+        aiRedactSecrets = v(.aiRedactSecrets, d.aiRedactSecrets)
+        aiRedactEmails = v(.aiRedactEmails, d.aiRedactEmails)
+        aiPseudonymizePeople = v(.aiPseudonymizePeople, d.aiPseudonymizePeople)
+        aiMaskedTerms = v(.aiMaskedTerms, d.aiMaskedTerms)
+        aiSendDiffs = v(.aiSendDiffs, d.aiSendDiffs)
+        aiSendJiraText = v(.aiSendJiraText, d.aiSendJiraText)
+        aiSendMeetingNotes = v(.aiSendMeetingNotes, d.aiSendMeetingNotes)
+        aiLogDays = v(.aiLogDays, d.aiLogDays)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -194,5 +231,8 @@ public struct AppConfig: Codable, Equatable, Sendable {
         case batchLowPriority, batchIntervalMinutes, quietDuringMeetings, urgentCategories
         case calendarEnabled, paletteEnabled, speechVoice, speechRate
         case weeklyReportEnabled, weeklyReportWeekday, weeklyReportTime
+        case jiraShowDone, mrShowDraftReviews
+        case aiWorkEnabled, aiRedactSecrets, aiRedactEmails, aiPseudonymizePeople, aiMaskedTerms
+        case aiSendDiffs, aiSendJiraText, aiSendMeetingNotes, aiLogDays
     }
 }

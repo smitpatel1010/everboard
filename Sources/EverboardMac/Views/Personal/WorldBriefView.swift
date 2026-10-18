@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The personal World & Tech brief with per-story feedback that tunes future briefs.
 struct WorldBriefView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @AppStorage("news.tab") private var tab: NewsTab = .all
     @AppStorage("news.mode") private var mode: Mode = .brief
     @State private var note = ""
@@ -220,7 +220,7 @@ struct WorldBriefView: View {
 }
 
 struct StoryCard: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let story: NewsBrief.Story
 
     var vote: NewsFeedback.Vote? { model.newsVotes[story.key] }
@@ -330,7 +330,7 @@ enum NewsTab: String, CaseIterable, Identifiable {
 }
 
 struct ArticleRow: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let article: Article
     var showSection = false
 
@@ -383,7 +383,7 @@ struct ArticleRow: View {
 
 /// Stories you follow and the updates found for each.
 struct FollowingView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var updates: [String: [StoryUpdate]] = [:]
 
     var body: some View {

@@ -1,6 +1,16 @@
 # Extending Everboard
 
-## Add a data source (e.g. GitHub, Linear, a personal feed)
+## Add a code host (e.g. Bitbucket, Gitea)
+
+GitLab and GitHub share one model, so a new host plugs into every screen, rule and AI feature at once:
+
+1. **Add a `CodeHostKind` case** in `CodeHost/CodeHost.swift` (display name, env prefix, default URL). `Secrets` then picks up `<PREFIX>_URL`, `<PREFIX>_TOKEN`, `<PREFIX>_ORGS` and named accounts automatically.
+2. **Write a client** that conforms to `CodeHostClient` (current user, details and diffs for summaries, approve/comment/retry, search, report queries).
+3. **Write a source** that fills the `CodeScope` lists (`account.scope(.mine)`, `.review`, `.assigned`, `.reportees`, `.todos`, `.pipelines`) with `FeedItem`s using the shared attrs: `account`, `projectPath`, `iid`, `pipelineStatus`, `pipelineId`, `pipelineUrl`, `approvedBy`, `mergeStatus`, `action`. Return `CodeHostRules.events(for:account:)` from `events(for:config:)`. See `GitHub/GitHubSource.swift`.
+4. **Map statuses** onto the GitLab vocabulary (`success`, `failed`, `running`, `pending`, `canceled`) so pills and rules work unchanged.
+5. **Wire it** in `CodeHosts.client(for:)` and `CodeHosts.source(for:interval:)`. The compiler points to the remaining `switch`es.
+
+## Add a data source (e.g. Linear, a personal feed)
 
 1. **Write a client** in `Sources/EverboardCore/<Name>/`, using `HTTPClient` for the requests.
 2. **Implement `DataSource`:**

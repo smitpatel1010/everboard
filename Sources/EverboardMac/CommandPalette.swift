@@ -165,16 +165,16 @@ enum PaletteGroup: Int, CaseIterable, Comparable {
         case .recent: return "Recent"
         case .meetings: return "Today's meetings"
         case .review: return "Review requested"
-        case .myMRs: return "My merge requests"
-        case .reportees: return "Team merge requests"
-        case .todos: return "GitLab to-dos"
+        case .myMRs: return "My MRs & PRs"
+        case .reportees: return "Team MRs & PRs"
+        case .todos: return "To-dos & notifications"
         case .jira: return "Jira"
         case .pipelines: return "Pipelines"
         case .inbox: return "Inbox"
         case .commands: return "Commands"
         case .stories: return "Today's brief"
         case .articles: return "Live news"
-        case .remoteGitLab: return "GitLab search"
+        case .remoteGitLab: return "MR & PR search"
         case .remoteJira: return "Jira search"
         case .fallback: return "More"
         }
@@ -352,7 +352,7 @@ final class PaletteState {
 
     var selectedActions: [PaletteAction] { (selected?.actions ?? []) + extraActions }
 
-    // MARK: Remote search (GitLab + Jira), debounced
+    // MARK: Remote search (every GitLab/GitHub account + Jira), debounced
 
     private func scheduleRemoteSearch() {
         remoteTask?.cancel()
@@ -361,10 +361,16 @@ final class PaletteState {
         guard text.count >= 3, [.all, .mrs, .jira].contains(scope) else { remoteLoading = false; return }
         remoteLoading = true
         let secrets = model.secrets
+        let hosts = model.codeHosts
         remoteTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled, let self else { return }
-            async let mrs: [GitLabMR] = (scope == .jira ? [] : (try? await GitLabClient(secrets: secrets)?.searchMergeRequests(text))) ?? []
+            async let mrs: [ChangeRecord] = scope == .jira ? [] : await withTaskGroup(of: [ChangeRecord].self) { group in
+                for host in hosts { group.addTask { (try? await host.searchChanges(text, limit: 8)) ?? [] } }
+                var all: [ChangeRecord] = []
+                for await r in group { all += r }
+                return all.sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+            }
             async let issues: [JiraIssue] = (scope == .mrs ? [] : (try? await JiraClient(secrets: secrets)?.quickSearch(text))) ?? []
             let (m, i) = await (mrs, issues)
             guard !Task.isCancelled else { return }
@@ -644,12 +650,12 @@ struct PaletteBuilder {
 
     // MARK: Remote results
 
-    func remoteMR(_ m: GitLabMR) -> PaletteEntry {
-        PaletteEntry(id: "gitlab.mr:\(m.projectId):\(m.iid)", group: .remoteGitLab, icon: "magnifyingglass", tint: .purple,
-                     title: m.title, subtitle: "\(m.ref) · \(m.author?.name ?? "") · \(m.state)", badge: m.state, date: m.updatedAt,
-                     details: [("State", m.state), ("Author", m.author?.name ?? ""), ("Updated", Dates.age(m.updatedAt) + " ago")],
-                     url: m.webUrl,
-                     actions: [PaletteAction(title: "Open in browser", icon: "safari", shortcut: "↩") { model.open(m.webUrl) }] + link(m.webUrl))
+    func remoteMR(_ m: ChangeRecord) -> PaletteEntry {
+        PaletteEntry(id: m.id, group: .remoteGitLab, icon: "magnifyingglass", tint: .purple,
+                     title: m.title, subtitle: "\(m.ref) · \(m.authorName ?? "") · \(m.state)", badge: m.state, date: m.updatedAt,
+                     details: [("State", m.state), ("Author", m.authorName ?? ""), ("Updated", Dates.age(m.updatedAt) + " ago")],
+                     url: m.url,
+                     actions: [PaletteAction(title: "Open in browser", icon: "safari", shortcut: "↩") { model.open(m.url) }] + link(m.url))
     }
 
     func remoteIssue(_ i: JiraIssue) -> PaletteEntry {
@@ -688,7 +694,6 @@ struct PaletteBuilder {
     func fallbacks() -> [PaletteEntry] {
         let text = state.parsed.text
         guard text.count >= 2 else { return [] }
-        let q = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? text
         var out = [PaletteEntry(id: "fb.ask", group: .fallback, icon: "bubble.left.and.text.bubble.right", tint: .orange,
                                 title: "Ask the news: “\(text)”", subtitle: "Claude answers from the last 48h of articles",
                                 actions: [PaletteAction(title: "Ask", icon: "sparkles", shortcut: "↩") { model.showDashboard(.worldBrief); model.ask(text) }])]
@@ -699,10 +704,11 @@ struct PaletteBuilder {
                                     subtitle: "Opens in your browser", url: url,
                                     actions: [PaletteAction(title: "Open", icon: "safari", shortcut: "↩") { model.open(url) }]))
         }
-        if let gl = model.secrets.gitlabBaseURL {
-            let url = "\(gl.absoluteString)/dashboard/merge_requests?scope=all&search=\(q)"
-            out.append(PaletteEntry(id: "fb.gitlab", group: .fallback, icon: "safari", tint: .purple, title: "Search GitLab MRs for “\(text)”",
-                                    subtitle: "Opens in your browser", url: url,
+        for host in model.codeHosts {
+            let a = host.account, url = host.searchPageURL(text)
+            out.append(PaletteEntry(id: "fb.\(a.id)", group: .fallback, icon: "safari", tint: .purple,
+                                    title: "Search \(a.displayName) \(a.kind.changeNoun)s for “\(text)”",
+                                    subtitle: "Opens \(a.host) in your browser", url: url,
                                     actions: [PaletteAction(title: "Open", icon: "safari", shortcut: "↩") { model.open(url) }]))
         }
         return out
@@ -715,8 +721,9 @@ struct PaletteBuilder {
                          actions: [PaletteAction(title: "Run", icon: "return", shortcut: "↩", run: run)], boost: boost)
         }
         return [
-            cmd("dash", "rectangle.grid.2x2", "Open dashboard", "Inbox", boost: 5) { m.showDashboard(.inbox) },
-            cmd("refresh", "arrow.clockwise", "Refresh now", "Poll GitLab and Jira", boost: 4) { m.refreshAll() },
+            cmd("dash", "house", "Open dashboard", "Home", boost: 5) { m.showDashboard(.home) },
+            cmd("inbox", "tray", "Open inbox", "Dashboard") { m.showDashboard(.inbox) },
+            cmd("refresh", "arrow.clockwise", "Refresh now", "Poll every account", boost: 4) { m.refreshAll() },
             cmd("brief", "sun.max", "Generate work brief", "Claude · Work Brief", boost: 3) { m.showDashboard(.workBrief); m.generateWorkBrief() },
             cmd("standup", "text.badge.checkmark", "Write my standup", "Claude · Team & Reports", boost: 3) { m.reportsTab = "standup"; m.showDashboard(.reports); m.generateStandup() },
             cmd("weekly", "doc.text", "Write weekly report", "Claude · Team & Reports") { m.reportsTab = "weekly"; m.showDashboard(.reports); m.generateWeekly() },
@@ -732,6 +739,8 @@ struct PaletteBuilder {
             },
             cmd("stop", "stop.fill", "Stop reading aloud", "Speech") { Speech.shared.stop() },
             cmd("usage", "chart.bar", "AI usage", "Settings") { m.settingsTab = "usage"; m.showDashboard(.settings) },
+            cmd("aiactivity", "lock.shield", "AI activity — what was sent to Claude", "Privacy") { m.showDashboard(.aiActivity) },
+            cmd("privacy", "hand.raised", "AI privacy settings", "Settings") { m.settingsTab = "privacy"; m.showDashboard(.settings) },
             cmd("settings", "gearshape", "Settings", "") { m.showDashboard(.settings) },
             cmd("quit", "power", "Quit Everboard", "") { NSApp.terminate(nil) },
         ]
@@ -817,7 +826,7 @@ struct PaletteView: View {
                     if sections.isEmpty {
                         VStack(spacing: 6) {
                             Image(systemName: "magnifyingglass").font(.title).foregroundStyle(.tertiary)
-                            Text(state.remoteLoading ? "Searching GitLab and Jira…" : "No results").foregroundStyle(.secondary)
+                            Text(state.remoteLoading ? "Searching your accounts…" : "No results").foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 60)
                     }

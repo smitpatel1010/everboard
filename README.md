@@ -2,12 +2,12 @@
 
 A macOS menu-bar app that puts your workday in one place:
 
-- **GitLab:** your MRs, review requests, your reportees' MRs, pipelines and to-dos
+- **GitLab and GitHub, as many accounts as you like:** your MRs/PRs, review requests, your reportees' changes, pipelines / Actions runs and to-dos / notifications. Mix gitlab.com, self-hosted GitLab, github.com and GitHub Enterprise, optionally limited to certain groups or orgs
 - **Jira Cloud:** issues assigned to you and the saved filters you choose to watch
-- **Notifications:** pipeline failures, new MRs from your team, mentions, Jira changes, with batching and quiet time during meetings
+- **Notifications:** pipeline and check failures, new MRs/PRs from your team, mentions, Jira changes, with batching and quiet time during meetings
 - **AI via the local `claude` CLI:**
   - a morning work brief
-  - MR summaries and Jira digests
+  - MR/PR summaries and Jira digests
   - standups, weekly reports and team-health notes
   - meeting prep
 - **World & Tech brief:** a personal news brief that learns from your 👍/👎
@@ -15,7 +15,7 @@ A macOS menu-bar app that puts your workday in one place:
 
 It's native Swift/SwiftUI, uses about 40 MB of RAM, and stores all its data locally on your Mac.
 
-> **Status:** personal project, works on macOS 14+ (tested on macOS 26). GitLab (gitlab.com or self-hosted) and Jira **Cloud** are supported. Jira Server/Data Center is not.
+> **Status:** personal project, works on macOS 14+ (tested on macOS 26). GitLab (gitlab.com or self-hosted), GitHub (github.com or Enterprise Server) and Jira **Cloud** are supported. Jira Server/Data Center is not.
 
 ## Quick start
 
@@ -35,11 +35,14 @@ You need:
 |---|---|
 | `GITLAB_URL` | `https://gitlab.com` or your self-hosted GitLab (must be HTTPS) |
 | `GITLAB_TOKEN` | Personal access token: `read_api` to view, `api` to approve, retry or comment |
+| `GITHUB_URL` | `https://github.com` or your GitHub Enterprise Server URL. Setting it turns GitHub tracking on |
+| `GITHUB_TOKEN` | Classic token with `repo` + `notifications`. On its own (no `GITHUB_URL`) it only raises rate limits for the "trending repos" news source |
+| `GITLAB_ORGS`, `GITHUB_ORGS` | Optional, comma-separated: only track these groups / orgs |
+| `GITLAB_<NAME>_URL`, `_TOKEN`, `_ORGS` | More accounts, e.g. `GITLAB_WORK_*`, `GITHUB_OSS_*`. The URL defaults to gitlab.com / github.com |
 | `JIRA_URL` | `https://<site>.atlassian.net` |
 | `JIRA_EMAIL`, `JIRA_API_TOKEN` | Your Atlassian email and an [API token](https://id.atlassian.com/manage-profile/security/api-tokens) |
-| `GITHUB_TOKEN` | Optional; raises rate limits for the "trending repos" news source |
 
-These go in `secrets.env` at the project root. That file is git-ignored and kept at `chmod 600`. The same variables also work as environment variables when you run the CLI.
+These go in `secrets.env` at the project root, or in `~/.config/everboard/secrets.env` if you'd rather keep them outside the checkout (`$EVERBOARD_SECRETS` can point anywhere else). The file is git-ignored and kept at `chmod 600`. Any variable missing from the file is read from the environment, so the CLI also works with plain `export`s. Nothing about your organisation is hard-coded: hosts, emails and tokens all come from these variables.
 
 Then, in **Settings**:
 1. **Team:** add your reportees' emails.
@@ -69,7 +72,12 @@ make test                                               # Swift Testing (no Xcod
 make build                                              # debug build
 open build/Everboard.app --args --demo                  # sample data, no tokens needed
 swift run everboard-cli check                           # verify tokens and connections
+make leakcheck                                          # scan for tokens / personal details before committing
 ```
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines, and [SECURITY.md](SECURITY.md) to report a vulnerability privately.
 
 ## License
 

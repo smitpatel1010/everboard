@@ -1,6 +1,6 @@
 import Foundation
 
-/// Per-person delivery metrics over a window (Swarmia/LinearB-style, from GitLab data only).
+/// Per-person delivery metrics over a window (Swarmia/LinearB-style, from GitLab/GitHub data only).
 public struct PersonMetrics: Codable, Sendable, Identifiable, Hashable {
     public var username: String
     public var name: String
@@ -50,64 +50,66 @@ public enum TeamMath {
         return s.count % 2 == 1 ? s[s.count / 2] : (s[s.count / 2 - 1] + s[s.count / 2]) / 2
     }
 
-    public static func metrics(username: String, name: String, merged: [GitLabMR], reviewed: [GitLabMR],
-                               open: [FeedItem], now: Date = Date()) -> PersonMetrics {
+    /// - Parameter usernames: all of the person's usernames across hosts (defaults to `username`), so reviewing their own
+    ///   change on any host doesn't count as a review.
+    public static func metrics(username: String, name: String, merged: [ChangeRecord], reviewed: [ChangeRecord],
+                               open: [FeedItem], usernames: Set<String> = [], now: Date = Date()) -> PersonMetrics {
+        let mine = usernames.union([username])
         let cycles = merged.compactMap { mr -> Double? in
             guard let c = mr.createdAt, let m = mr.mergedAt else { return nil }
             return m.timeIntervalSince(c) / 3600
         }
-        let sizes = merged.compactMap { $0.changesCount.flatMap { Double($0.replacingOccurrences(of: "+", with: "")) } }
+        let sizes = merged.compactMap { $0.filesChanged.map(Double.init) }
         let ages = open.compactMap { $0.createdAt.map { now.timeIntervalSince($0) / 86400 } }
         return PersonMetrics(username: username, name: name, merged: merged.count,
                              medianCycleHours: median(cycles), medianSize: median(sizes), open: open.count,
                              oldestOpenDays: ages.max(), openRed: open.filter { $0["pipelineStatus"] == "failed" }.count,
-                             reviewsGiven: reviewed.filter { $0.author?.username != username }.count)
+                             reviewsGiven: reviewed.filter { !mine.contains($0.authorUsername ?? "") }.count)
     }
 }
 
-/// Standup, weekly report and team health — GitLab + Jira data, written up by Claude.
+/// Standup, weekly report and team health — GitLab/GitHub + Jira data, written up by Claude.
 public struct ReportService: Sendable {
     let store: Store
     let claude: ClaudeRunning
-    let gitlab: GitLabClient?
+    let codeHosts: [CodeHostClient]
     let jira: JiraClient?
 
-    public init(store: Store, claude: ClaudeRunning, gitlab: GitLabClient?, jira: JiraClient?) {
+    public init(store: Store, claude: ClaudeRunning, codeHosts: [CodeHostClient], jira: JiraClient?) {
         self.store = store
         self.claude = claude
-        self.gitlab = gitlab
+        self.codeHosts = codeHosts
         self.jira = jira
     }
 
     static let system = """
     You write concise engineering status updates. Plain, specific, no fluff. Markdown with ## headings and - bullets. \
-    Reference MRs as project!iid and Jira issues by key. No preamble.
+    Reference GitLab MRs as project!iid, GitHub PRs as owner/repo#number, and Jira issues by key. No preamble.
     """
 
-    private func me() async throws -> GitLabUser {
-        guard let gitlab else { throw HTTPError.notConfigured("GitLab is not configured") }
-        if let json = await store.value("gitlab.me"), let u = try? JSONDecoder().decode(GitLabUser.self, from: Data(json.utf8)) { return u }
-        return try await gitlab.currentUser()
+    private func requireCodeHost() throws {
+        if codeHosts.isEmpty { throw HTTPError.notConfigured("Add a GitLab or GitHub account first (Settings → Accounts)") }
     }
 
     // MARK: Team health
 
     public func teamHealth(reportees: [Reportee], days: Int = 7, now: Date = Date()) async throws -> TeamHealth {
-        guard let gitlab else { throw HTTPError.notConfigured("GitLab is not configured") }
+        try requireCodeHost()
         let since = now.addingTimeInterval(-Double(days) * 86400)
-        let open = try await store.items(scope: GitLabSource.Scope.reportees)
+        let open = try await CodeHosts.items(.reportees, accounts: codeHosts.accounts, store: store)
         var people: [PersonMetrics] = []
         for r in reportees {
-            guard let u = r.username else { continue }
-            let merged = try await gitlab.mergeRequests(author: u, state: "merged", updatedAfter: since)
-                .filter { ($0.mergedAt ?? .distantPast) >= since }
-            // Sizes need one call per MR; cap it.
-            var sized: [GitLabMR] = []
-            for mr in merged.prefix(25) { sized.append((try? await gitlab.mergeRequestStats(projectId: mr.projectId, iid: mr.iid)) ?? mr) }
-            sized += merged.dropFirst(25)
-            let reviewed = (try? await gitlab.mergeRequests(reviewer: u, state: "all", updatedAfter: since)) ?? []
-            people.append(TeamMath.metrics(username: u, name: r.name ?? u, merged: sized, reviewed: reviewed,
-                                           open: open.filter { $0.author == u }, now: now))
+            var merged: [ChangeRecord] = [], reviewed: [ChangeRecord] = [], names = Set<String>()
+            for host in codeHosts {
+                guard let u = r.username(on: host.account.kind) else { continue }
+                names.insert(u)
+                merged += try await host.changes(author: u, reviewer: nil, state: .merged, since: since, withSize: true)
+                reviewed += (try? await host.changes(author: nil, reviewer: u, state: .all, since: since, withSize: false)) ?? []
+            }
+            guard !names.isEmpty else { continue }
+            let id = r.username ?? r.githubUsername ?? r.email
+            people.append(TeamMath.metrics(username: id, name: r.name ?? id, merged: merged, reviewed: reviewed,
+                                           open: open.filter { names.contains($0.author ?? "") }, usernames: names, now: now))
         }
         let health = TeamHealth(generatedAt: now, days: days, people: people.sorted { $0.name < $1.name })
         try await save(health)
@@ -121,8 +123,8 @@ public struct ReportService: Sendable {
                 + "(oldest \(p.oldestOpenDays.map { String(format: "%.0fd", $0) } ?? "-"), red \(p.openRed)), reviews given \(p.reviewsGiven)"
         }.joined(separator: "\n")
         let prompt = """
-        As my engineering-manager assistant, interpret my team's last \(health.days) days of GitLab metrics.
-        ## Highlights — who shipped well. ## Watch — anyone stuck (old/red open MRs, long cycle times, very large MRs, no reviews given), with a concrete suggestion for each. ## Team trend — one or two lines.
+        As my engineering-manager assistant, interpret my team's last \(health.days) days of code-review metrics (MRs/PRs).
+        ## Highlights — who shipped well. ## Watch — anyone stuck (old/red open MRs/PRs, long cycle times, very large MRs, no reviews given), with a concrete suggestion for each. ## Team trend — one or two lines.
         Be fair: low numbers can mean vacation or big design work; phrase as questions to ask, not judgements.
 
         \(rows)
@@ -144,34 +146,48 @@ public struct ReportService: Sendable {
 
     // MARK: Standup & weekly report
 
+    /// Your user on each host (a failing host is skipped rather than failing the whole report).
+    private func me() async throws -> [(CodeHostClient, CodeHostUser)] {
+        try requireCodeHost()
+        var out: [(CodeHostClient, CodeHostUser)] = []
+        var lastError: Error?
+        for host in codeHosts {
+            do { out.append((host, try await host.currentUser())) } catch { lastError = error }
+        }
+        if out.isEmpty, let lastError { throw lastError }
+        return out
+    }
+
     public func standup(now: Date = Date()) async throws -> String {
-        guard let gitlab else { throw HTTPError.notConfigured("GitLab is not configured") }
-        let user = try await me()
+        let accounts = try await me()
         // Since the previous working day's start (Monday → Friday).
         var since = Calendar.current.startOfDay(for: now.addingTimeInterval(-86400))
         while Calendar.current.isDateInWeekend(since) { since = since.addingTimeInterval(-86400) }
 
-        let merged = try await gitlab.mergeRequests(author: user.username, state: "merged", updatedAfter: since)
-        let reviewed = try await gitlab.mergeRequests(reviewer: user.username, state: "all", updatedAfter: since)
-            .filter { $0.author?.username != user.username }
-        let openMine = try await store.items(scope: GitLabSource.Scope.mine)
+        var merged: [ChangeRecord] = [], reviewed: [ChangeRecord] = []
+        for (host, user) in accounts {
+            merged += try await host.changes(author: user.username, reviewer: nil, state: .merged, since: since, withSize: false)
+            reviewed += try await host.changes(author: nil, reviewer: user.username, state: .all, since: since, withSize: false)
+                .filter { $0.authorUsername != user.username }
+        }
+        let openMine = try await CodeHosts.items(.mine, accounts: codeHosts.accounts, store: store)
         let jiraDone = (try? await jira?.search("assignee = currentUser() AND updated >= \"\(jqlDate(since))\" ORDER BY updated DESC", max: 30)) ?? []
         let jiraNow = try await store.items(scope: JiraSource.Scope.assigned)
 
         let prompt = """
         Write my daily standup update (I'll paste it into team chat). Sections: ## Yesterday ## Today ## Blockers (say "None" if none).
-        Keep each bullet short. Infer "Today" from open MRs and in-progress Jira issues. A red pipeline or an MR waiting a long time for review is a possible blocker.
+        Keep each bullet short. Infer "Today" from open MRs/PRs and in-progress Jira issues. A red pipeline or a change waiting a long time for review is a possible blocker.
 
         Merged since \(since.formatted(date: .abbreviated, time: .omitted)):
         \(merged.map { "- \($0.ref): \($0.title)" }.joined(separator: "\n"))
 
         Reviewed for others:
-        \(reviewed.map { "- \($0.ref): \($0.title) (by \($0.author?.name ?? "?"))" }.joined(separator: "\n"))
+        \(reviewed.map { "- \($0.ref): \($0.title) (by \($0.authorName ?? "?"))" }.joined(separator: "\n"))
 
         Jira issues I touched:
         \(jiraDone.map { "- \($0.key) [\($0.fields.status?.name ?? "")] \($0.fields.summary ?? "")" }.joined(separator: "\n"))
 
-        My open MRs:
+        My open MRs / PRs:
         \(openMine.map { "- \($0.subtitle): \($0.title) · pipeline \($0["pipelineStatus"] ?? "-") · opened \(Dates.age($0.createdAt, now: now)) ago" }.joined(separator: "\n"))
 
         Jira assigned to me now:
@@ -184,17 +200,24 @@ public struct ReportService: Sendable {
     }
 
     public func weeklyReport(reportees: [Reportee], now: Date = Date()) async throws -> String {
-        guard let gitlab else { throw HTTPError.notConfigured("GitLab is not configured") }
-        let user = try await me()
+        let accounts = try await me()
         let since = now.addingTimeInterval(-7 * 86400)
         var sections: [String] = []
-        let people = [(user.username, "Me (\(user.name))")] + reportees.compactMap { r in r.username.map { ($0, r.name ?? $0) } }
-        for (username, label) in people {
-            let merged = try await gitlab.mergeRequests(author: username, state: "merged", updatedAfter: since)
-                .filter { ($0.mergedAt ?? .distantPast) >= since }
-            let opened = try await gitlab.mergeRequests(author: username, state: "opened", updatedAfter: since)
+        // Each person with their username on each host they use.
+        let myName = accounts.first?.1.name ?? "me"
+        var people: [(label: String, logins: [(CodeHostClient, String)])] = [("Me (\(myName))", accounts.map { ($0.0, $0.1.username) })]
+        for r in reportees {
+            let logins = codeHosts.compactMap { host in r.username(on: host.account.kind).map { (host, $0) } }
+            if !logins.isEmpty { people.append((r.name ?? logins[0].1, logins)) }
+        }
+        for person in people {
+            var merged: [ChangeRecord] = [], opened: [ChangeRecord] = []
+            for (host, login) in person.logins {
+                merged += try await host.changes(author: login, reviewer: nil, state: .merged, since: since, withSize: false)
+                opened += try await host.changes(author: login, reviewer: nil, state: .open, since: since, withSize: false)
+            }
             sections.append("""
-            ### \(label)
+            ### \(person.label)
             Merged (\(merged.count)):
             \(merged.map { "- \($0.ref): \($0.title)" }.joined(separator: "\n"))
             Still open (\(opened.count)):

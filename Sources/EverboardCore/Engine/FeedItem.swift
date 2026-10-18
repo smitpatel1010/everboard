@@ -54,12 +54,12 @@ public enum EventCategory: String, CaseIterable, Codable, Sendable {
 
     public var label: String {
         switch self {
-        case .pipelineFailedMR: return "Pipeline failed on my MR"
-        case .pipelineFailedTriggered: return "Pipeline I triggered failed"
-        case .reporteeNewMR: return "Reportee opened an MR"
+        case .pipelineFailedMR: return "Pipeline / checks failed on my MR or PR"
+        case .pipelineFailedTriggered: return "Pipeline or workflow run I triggered failed"
+        case .reporteeNewMR: return "Reportee opened an MR or PR"
         case .todoReview: return "Review requested from me"
-        case .todoMention: return "Mentioned in GitLab"
-        case .todoOther: return "Other GitLab to-dos (assigned, approval, unmergeable)"
+        case .todoMention: return "Mentioned in GitLab or GitHub"
+        case .todoOther: return "Other to-dos and notifications (assigned, approval, unmergeable)"
         case .jiraAssigned: return "Jira issue assigned to me"
         case .jiraComment: return "New comment on my Jira issues"
         case .jiraMention: return "Mentioned in Jira"
@@ -77,7 +77,7 @@ public enum EventCategory: String, CaseIterable, Codable, Sendable {
 
     public var source: String {
         switch self {
-        case .pipelineFailedMR, .pipelineFailedTriggered, .reporteeNewMR, .todoReview, .todoMention, .todoOther: return "gitlab"
+        case .pipelineFailedMR, .pipelineFailedTriggered, .reporteeNewMR, .todoReview, .todoMention, .todoOther: return "code"
         case .jiraAssigned, .jiraComment, .jiraMention, .jiraFilterNew, .jiraFilterStatus: return "jira"
         case .workBriefReady, .reportReady: return "brief"
         case .newsBriefReady, .newsMajor, .newsFollow: return "news"

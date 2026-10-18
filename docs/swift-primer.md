@@ -77,7 +77,7 @@ Differ.diff(...) { source.events(for: $0, config: config) }   // trailing closur
 ### Errors
 Functions that can fail are marked `throws`, and callers must use `try`:
 ```swift
-func currentUser() async throws -> GitLabUser
+func gitlabUser() async throws -> GitLabUser
 do { let u = try await gl.currentUser() } catch { print(error) }
 let maybe = try? await gl.currentUser()   // nil on error
 ```

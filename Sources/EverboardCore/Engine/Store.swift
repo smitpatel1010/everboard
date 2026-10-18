@@ -65,6 +65,16 @@ public final class Store: Sendable {
             CREATE INDEX ai_usage_ts ON ai_usage(ts);
             """)
         }
+        m.registerMigration("v4-ai-log") { db in
+            try db.execute(sql: """
+            CREATE TABLE ai_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, feature TEXT NOT NULL, model TEXT NOT NULL,
+                tools TEXT NOT NULL, systemPrompt TEXT NOT NULL, prompt TEXT NOT NULL, response TEXT NOT NULL,
+                ok INTEGER NOT NULL, error TEXT, redactions TEXT NOT NULL, costUSD REAL NOT NULL,
+                inputTokens INTEGER NOT NULL, outputTokens INTEGER NOT NULL);
+            CREATE INDEX ai_log_ts ON ai_log(ts);
+            """)
+        }
         return m
     }
 
@@ -134,11 +144,12 @@ public final class Store: Sendable {
     }
 
     /// Drop stale rows so the database stays small.
-    public func prune(now: Date = Date()) async throws {
+    public func prune(now: Date = Date(), aiLogDays: Int = 14) async throws {
         try await db.write { db in
             let t = now.timeIntervalSince1970
+            try db.execute(sql: "DELETE FROM ai_log WHERE ts < ?", arguments: [t - Double(max(aiLogDays, 0)) * 86400])
             try db.execute(sql: "DELETE FROM items WHERE present = 0 AND lastSeen < ?", arguments: [t - 30 * 86400])
-            try db.execute(sql: "DELETE FROM items WHERE scope LIKE 'gitlab.pipelines.%' AND lastSeen < ?", arguments: [t - 14 * 86400])
+            try db.execute(sql: "DELETE FROM items WHERE scope LIKE '%.pipelines.%' AND lastSeen < ?", arguments: [t - 14 * 86400])
             try db.execute(sql: "DELETE FROM items WHERE scope = 'jira.comments' AND lastSeen < ?", arguments: [t - 30 * 86400])
             try db.execute(sql: "DELETE FROM events WHERE ts < ?", arguments: [t - 45 * 86400])
             try db.execute(sql: "DELETE FROM articles WHERE fetchedAt < ?", arguments: [t - 4 * 86400])

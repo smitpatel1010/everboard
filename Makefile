@@ -4,7 +4,7 @@ DEV := /Library/Developer/CommandLineTools/Library/Developer
 TEST_FLAGS := -Xswiftc -F -Xswiftc $(DEV)/Frameworks -Xlinker -F -Xlinker $(DEV)/Frameworks \
               -Xlinker -rpath -Xlinker $(DEV)/Frameworks -Xlinker -rpath -Xlinker $(DEV)/usr/lib
 
-.PHONY: build app install run test check cli icon clean
+.PHONY: build app install run test check cli icon leakcheck hooks clean
 
 build:
 	swift build
@@ -30,6 +30,15 @@ check: cli
 
 icon:
 	swift scripts/make-icon.swift Resources/AppIcon.icns
+
+# Secrets / personal-details scan of everything that would be committed (add --history for all commits).
+leakcheck:
+	scripts/leakcheck.sh
+
+# Run leakcheck before every commit in this clone.
+hooks:
+	@printf '#!/bin/sh\nexec scripts/leakcheck.sh\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+	@echo "Installed .git/hooks/pre-commit"
 
 clean:
 	rm -rf .build build

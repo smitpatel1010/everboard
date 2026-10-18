@@ -27,9 +27,9 @@ struct StatusPill: View {
     }
 }
 
-/// Small source-health indicators ("GitLab unreachable — VPN?").
+/// Small source-health indicators ("GitLab · work unreachable — VPN?").
 struct HealthChips: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     var compact = false
 
     var body: some View {
@@ -38,12 +38,12 @@ struct HealthChips: View {
                 let h = model.health[key]!
                 HStack(spacing: 4) {
                     Circle().fill(color(h)).frame(width: 7, height: 7)
-                    Text(compact ? key.capitalized : h.label).font(.caption).lineLimit(1)
+                    Text(compact ? model.sourceName(key) : h.label).font(.caption).lineLimit(1)
                 }
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)
                 .background(.quaternary.opacity(0.5), in: Capsule())
-                .help("\(key.capitalized): \(h.label)")
+                .help("\(model.sourceName(key)): \(h.label)")
             }
         }
     }
@@ -59,13 +59,28 @@ struct HealthChips: View {
     }
 }
 
+private struct RefLinkerKey: EnvironmentKey {
+    static let defaultValue = RefLinker()
+}
+
+extension EnvironmentValues {
+    /// Makes MR refs and Jira keys in rendered markdown clickable.
+    var refLinker: RefLinker {
+        get { self[RefLinkerKey.self] }
+        set { self[RefLinkerKey.self] = newValue }
+    }
+}
+
 /// Tiny block-level markdown renderer (headings, bullets, numbered lists, paragraphs) with inline markdown.
 struct MarkdownView: View {
+    @Environment(\.refLinker) private var linker
     let text: String
+    /// Show only the first N blocks (for previews on Home).
+    var maxBlocks: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+            ForEach(Array(blocks.prefix(maxBlocks ?? .max).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .heading(let level, let s):
                     inline(s).font(level <= 2 ? .title3.weight(.semibold) : .headline).padding(.top, 6)
@@ -99,7 +114,7 @@ struct MarkdownView: View {
 
     var blocks: [Block] {
         var out: [Block] = []
-        for raw in text.components(separatedBy: .newlines) {
+        for raw in linker.linkify(text).components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
             if line == "---" || line == "***" { out.append(.rule); continue }
@@ -147,7 +162,7 @@ struct EmptyState: View {
 
 /// Sheet showing a Claude result with loading / error states.
 struct AIPanelSheet: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let panel: AIPanel
 
     var body: some View {
@@ -160,6 +175,9 @@ struct AIPanelSheet: View {
                 Spacer()
                 if let refresh = panel.refresh, panel.text != nil || panel.error != nil {
                     Button { refresh() } label: { Image(systemName: "arrow.clockwise") }.help("Regenerate")
+                }
+                if let text = panel.text {
+                    Button { model.copyToClipboard(text) } label: { Image(systemName: "doc.on.doc") }.help("Copy (links included)")
                 }
                 if panel.url != nil {
                     Button { model.open(panel.url) } label: { Image(systemName: "safari") }.help("Open in browser")

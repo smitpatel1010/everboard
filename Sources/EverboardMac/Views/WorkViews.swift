@@ -4,7 +4,7 @@ import SwiftUI
 // MARK: - Merge requests
 
 struct MergeRequestsView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var tab = "review"
 
     var items: [FeedItem] {
@@ -13,20 +13,29 @@ struct MergeRequestsView: View {
         case "assigned": return model.items.assigned
         case "reportees": return model.items.reportees
         case "todos": return model.items.todos
-        default: return model.items.review
+        default: return model.config.mrShowDraftReviews ? model.items.review : model.items.reviewReady
         }
     }
 
+    var hiddenDrafts: Int { model.items.review.count - model.items.reviewReady.count }
+
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                Text("Review requested (\(model.items.review.count))").tag("review")
-                Text("Mine (\(model.items.mine.count))").tag("mine")
-                Text("Assigned (\(model.items.assigned.count))").tag("assigned")
-                Text("Reportees (\(model.items.reportees.count))").tag("reportees")
-                Text("To-dos (\(model.items.todos.count))").tag("todos")
+            HStack {
+                Picker("", selection: $tab) {
+                    Text("Review requested (\(model.config.mrShowDraftReviews ? model.items.review.count : model.items.reviewReady.count))").tag("review")
+                    Text("Mine (\(model.items.mine.count))").tag("mine")
+                    Text("Assigned (\(model.items.assigned.count))").tag("assigned")
+                    Text("Reportees (\(model.items.reportees.count))").tag("reportees")
+                    Text("To-dos (\(model.items.todos.count))").tag("todos")
+                }
+                .pickerStyle(.segmented)
+                if tab == "review" {
+                    Toggle("Show drafts\(hiddenDrafts > 0 ? " (\(hiddenDrafts))" : "")", isOn: configBinding(model, \.mrShowDraftReviews))
+                        .toggleStyle(.checkbox).fixedSize()
+                        .help("Drafts where your review is requested. They don't count toward your review queue.")
+                }
             }
-            .pickerStyle(.segmented)
             .padding(10)
             Divider()
             if items.isEmpty {
@@ -45,11 +54,11 @@ struct MergeRequestsView: View {
                 List(items) { MRRow(item: $0, showAuthor: tab != "mine") }
             }
         }
-        .navigationTitle("Merge Requests")
+        .navigationTitle(model.changesTitle)
     }
 
     var emptyMessage: String {
-        if !model.secrets.hasGitLab { return "Add GITLAB_URL and GITLAB_TOKEN in Settings → Accounts." }
+        if !model.hasCodeHost { return "Add a GitLab or GitHub account to your secrets file (Settings → Accounts)." }
         if tab == "reportees" && model.config.reportees.isEmpty { return "Add your reportees' emails in Settings → Team." }
         return ""
     }
@@ -62,7 +71,7 @@ struct MergeRequestsView: View {
 }
 
 struct MRRow: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let item: FeedItem
     var showAuthor = true
     @State private var confirmApprove = false
@@ -121,7 +130,7 @@ struct MRRow: View {
             if item["pipelineStatus"] == "failed" { Button("Retry pipeline") { model.retryPipeline(item) } }
             Button("Comment…") { commenting = true }
             Divider()
-            Button(model.config.isMuted(item.id) ? "Unmute" : "Mute notifications for this MR") {
+            Button(model.config.isMuted(item.id) ? "Unmute" : "Mute notifications for this \(item.source == "github" ? "PR" : "MR")") {
                 if model.config.isMuted(item.id) { model.unmute(itemId: item.id) } else { model.mute(itemId: item.id, for: nil) }
             }
         }
@@ -139,7 +148,7 @@ struct MRRow: View {
 }
 
 struct TodoRow: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let item: FeedItem
 
     var body: some View {
@@ -168,7 +177,7 @@ struct TodoRow: View {
 // MARK: - Pipelines
 
 struct PipelinesView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var sorted: [FeedItem] {
         let dayAgo = Date().addingTimeInterval(-86400)
@@ -181,7 +190,7 @@ struct PipelinesView: View {
         Group {
             if sorted.isEmpty {
                 EmptyState(icon: "gearshape.2", title: "No recent pipelines",
-                           message: "Pipelines you trigger in projects you're active in (last 7 days) show up here, failed first.")
+                           message: "Pipelines and GitHub Actions runs you trigger in projects you're active in (last 7 days) show up here, failed first.")
             } else {
                 Table(sorted) {
                     TableColumn("Status") { StatusPill(text: $0.status ?? "?") }.width(90)
@@ -207,20 +216,36 @@ struct PipelinesView: View {
 // MARK: - Jira
 
 struct JiraView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var tab = "assigned"
 
-    var items: [FeedItem] { tab == "assigned" ? model.items.jiraAssigned : (model.items.jiraFilters[tab] ?? []) }
+    func items(_ tab: String) -> [FeedItem] {
+        let showDone = model.config.jiraShowDone
+        if tab == "assigned" {
+            guard showDone else { return model.items.jiraAssigned }
+            let open = Set(model.items.jiraAssigned.map(\.id))
+            return (model.items.jiraAssigned + model.items.jiraDone.filter { !open.contains($0.id) }).sortedByUpdate()
+        }
+        let all = model.items.jiraFilters[tab] ?? []
+        return showDone ? all : all.filter { $0["statusCategory"] != "done" }
+    }
+
+    var items: [FeedItem] { items(tab) }
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                Text("Assigned to me (\(model.items.jiraAssigned.count))").tag("assigned")
-                ForEach(model.config.jiraFilters) { f in
-                    Text("\(f.name) (\(model.items.jiraFilters[f.id]?.count ?? 0))").tag(f.id)
+            HStack {
+                Picker("", selection: $tab) {
+                    Text("Assigned to me (\(items("assigned").count))").tag("assigned")
+                    ForEach(model.config.jiraFilters) { f in
+                        Text("\(f.name) (\(items(f.id).count))").tag(f.id)
+                    }
                 }
+                .pickerStyle(.segmented)
+                Toggle("Show done", isOn: configBinding(model, \.jiraShowDone))
+                    .toggleStyle(.checkbox).fixedSize()
+                    .help("Also list done issues: ones assigned to you that finished in the last 30 days, and done issues in your filters.")
             }
-            .pickerStyle(.segmented)
             .padding(10)
             Divider()
             if items.isEmpty {
@@ -254,7 +279,7 @@ struct JiraView: View {
 // MARK: - Work brief
 
 struct WorkBriefView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -285,7 +310,7 @@ struct WorkBriefView: View {
                         MarkdownView(text: text)
                     } else if !model.workBriefRunning {
                         EmptyState(icon: "sun.max", title: "No brief yet",
-                                   message: "Claude reads your MRs, pipelines, reportees' work and Jira issues and tells you what needs you today.")
+                                   message: "Claude reads your MRs/PRs, pipelines, reportees' work and Jira issues and tells you what needs you today.")
                     } else {
                         Text("Claude is reading your dashboard…").foregroundStyle(.secondary)
                     }
@@ -301,7 +326,7 @@ struct WorkBriefView: View {
 
 /// Move a Jira issue through its workflow, or comment on it.
 struct JiraActionsMenu: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     let item: FeedItem
     @State private var transitions: [JiraClient.Transition] = []
     @State private var commenting = false

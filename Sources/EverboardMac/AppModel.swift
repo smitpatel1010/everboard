@@ -12,7 +12,12 @@ struct ItemsSnapshot {
     var todos: [FeedItem] = []
     var pipelines: [FeedItem] = []
     var jiraAssigned: [FeedItem] = []
+    /// Assigned issues finished in the last 30 days (Jira tab, "Show done" only).
+    var jiraDone: [FeedItem] = []
     var jiraFilters: [String: [FeedItem]] = [:]
+
+    /// Review requests that are actually ready: drafts aren't waiting on you yet.
+    var reviewReady: [FeedItem] { review.filter { $0["draft"] != "1" } }
 }
 
 /// A Claude result shown in a sheet (MR summary, Jira digest, "go deeper").
@@ -27,12 +32,15 @@ struct AIPanel: Identifiable {
 }
 
 enum SidebarItem: Hashable {
-    case inbox, mergeRequests, pipelines, jira, workBrief, reports, worldBrief, settings
+    case home, inbox, mergeRequests, pipelines, jira, workBrief, reports, worldBrief, aiActivity, settings
     case web(String)
 }
 
 @MainActor @Observable
 final class AppModel {
+    /// Views read this directly (`private var model: AppModel { .shared }`) rather than via `@Environment(AppModel.self)`:
+    /// SwiftUI can drop environment objects in recycled List/Table rows while scrolling, which crashes the app.
+    /// Observation tracking works the same either way.
     static let shared = AppModel()
 
     var config: AppConfig
@@ -41,7 +49,7 @@ final class AppModel {
     var events: [AppEvent] = []
     var unread = 0
     var items = ItemsSnapshot()
-    var selection: SidebarItem = .inbox
+    var selection: SidebarItem = .home
     var settingsTab = "general"
 
     var workBrief: (text: String, at: Date?)?
@@ -59,6 +67,10 @@ final class AppModel {
 
     var aiPanel: AIPanel?
     var storeError: String?
+    /// Links MR refs and Jira keys in AI output; rebuilt from your data after each reload.
+    var refLinker = RefLinker()
+    /// Your name from a code host, for the Home greeting.
+    var myName: String?
 
     // Reports & team
     var reportsTab = "team"
@@ -84,9 +96,10 @@ final class AppModel {
     private var started = false
 
     private init() {
-        config = AppConfig.load()
-        Secrets.writeTemplateIfMissing()
-        secrets = Secrets.load()
+        // Demo mode never reads or writes your real config (teammates, filters, panels).
+        config = DemoData.isDemo ? DemoData.config : AppConfig.load()
+        if !DemoData.isDemo { Secrets.writeTemplateIfMissing() }
+        secrets = Self.loadSecrets()
         do {
             store = DemoData.isDemo ? try Store.inMemory() : try Store()
         } catch {
@@ -104,7 +117,7 @@ final class AppModel {
     func start() {
         guard !started else { return }
         started = true
-        Log.info("Everboard \(AppInfo.version) starting; gitlab=\(secrets.hasGitLab) jira=\(secrets.hasJira)")
+        Log.info("Everboard \(AppInfo.version) starting; code hosts=\(codeHostAccounts.map(\.id)) jira=\(secrets.hasJira)")
         notifier.setUp(model: self)
         SystemEvents.shared.start(
             onWake: { [weak self] in self?.refreshAll() },
@@ -112,7 +125,8 @@ final class AppModel {
         if DemoData.isDemo {
             Task {
                 await DemoData.seed(store)
-                health = ["gitlab": .ok(Date()), "jira": .ok(Date().addingTimeInterval(-90))]
+                DemoData.seedCalendar(calendar)
+                health = ["gitlab": .ok(Date()), "github": .ok(Date().addingTimeInterval(-40)), "jira": .ok(Date().addingTimeInterval(-90))]
                 await reloadData()
                 workBrief = await assistant.latestBrief()
                 newsBrief = try? await store.latestBrief()
@@ -134,7 +148,7 @@ final class AppModel {
             await refreshVotes()
             await loadReportsAndFollows()
             lastNewsCollect = await store.value("news.collected.at").flatMap(Dates.parseISO)
-            try? await store.prune()
+            try? await store.prune(aiLogDays: config.aiLogDays)
         }
         tickTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
@@ -155,12 +169,8 @@ final class AppModel {
     }
 
     func configureSources() {
-        var sources: [DataSource] = []
-        if let gl = GitLabClient(secrets: secrets) {
-            sources.append(GitLabSource(client: gl, interval: config.gitlabInterval))
-        } else {
-            health["gitlab"] = .notConfigured("GitLab not configured")
-        }
+        var sources: [DataSource] = codeHostAccounts.map { CodeHosts.source(for: $0, interval: config.gitlabInterval) }
+        if sources.isEmpty { health["code"] = .notConfigured("GitLab / GitHub not configured") }
         if let jira = JiraClient(secrets: secrets) {
             sources.append(JiraSource(client: jira, interval: config.jiraInterval))
         } else {
@@ -173,8 +183,11 @@ final class AppModel {
         Task { await poller.configure(sources: sources, config: cfg) }
     }
 
+    /// Demo mode never reads your real secrets, so screenshots can't leak hosts, emails or paths.
+    static func loadSecrets() -> Secrets { DemoData.isDemo ? DemoData.secrets : Secrets.load() }
+
     func reloadSecrets() {
-        secrets = Secrets.load()
+        secrets = Self.loadSecrets()
         health = [:]
         configureSources()
     }
@@ -186,7 +199,7 @@ final class AppModel {
         let intervalsChanged = c.gitlabInterval != config.gitlabInterval || c.jiraInterval != config.jiraInterval
         let filtersChanged = c.jiraFilters.map(\.id) != config.jiraFilters.map(\.id) || c.reportees != config.reportees
         config = c
-        try? c.save()
+        if !DemoData.isDemo { try? c.save() }
         if intervalsChanged || filtersChanged {
             configureSources()
         } else {
@@ -212,7 +225,7 @@ final class AppModel {
         health[update.sourceId] = update.health
         if !update.newEvents.isEmpty { deliver(update.newEvents) }
         await reloadData()
-        if config.autoSummarizeReporteeMRs {
+        if config.autoSummarizeReporteeMRs && config.aiWorkEnabled {
             for e in update.newEvents where e.category == .reporteeNewMR {
                 if let item = item(withId: e.itemId) { _ = try? await assistant.summarizeMR(item) }
             }
@@ -253,19 +266,28 @@ final class AppModel {
     func reloadData() async {
         do {
             var s = ItemsSnapshot()
-            s.mine = try await store.items(scopePrefix: GitLabSource.Scope.mine).sortedByUpdate()
-            s.review = try await store.items(scopePrefix: GitLabSource.Scope.review).sortedByUpdate()
-            s.assigned = try await store.items(scopePrefix: GitLabSource.Scope.assigned).sortedByUpdate()
-            s.reportees = try await store.items(scopePrefix: GitLabSource.Scope.reportees).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
-            s.todos = try await store.items(scopePrefix: GitLabSource.Scope.todos).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+            let accounts = codeHostAccounts
+            func code(_ scope: CodeScope, presentOnly: Bool = true) async throws -> [FeedItem] {
+                try await CodeHosts.items(scope, accounts: accounts, store: store, presentOnly: presentOnly)
+            }
+            s.mine = try await code(.mine).sortedByUpdate()
+            s.review = try await code(.review).sortedByUpdate()
+            s.assigned = try await code(.assigned).sortedByUpdate()
+            s.reportees = try await code(.reportees).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+            s.todos = try await code(.todos).sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
             let weekAgo = Date().addingTimeInterval(-7 * 86400)
-            s.pipelines = try await store.items(scopePrefix: GitLabSource.Scope.pipelinesPrefix, presentOnly: false)
+            s.pipelines = try await code(.pipelines, presentOnly: false)
                 .filter { ($0.updatedAt ?? .distantPast) > weekAgo }.sortedByUpdate()
             s.jiraAssigned = try await store.items(scopePrefix: JiraSource.Scope.assigned).sortedByUpdate()
+            s.jiraDone = try await store.items(scope: JiraSource.Scope.done).sortedByUpdate()
             for f in config.jiraFilters {
                 s.jiraFilters[f.id] = try await store.items(scope: JiraSource.Scope.filterPrefix + f.id).sortedByUpdate()
             }
             items = s
+            refLinker = RefLinker(gitlabBase: accounts.first { $0.kind == .gitlab }?.webURL,
+                                  githubBase: accounts.first { $0.kind == .github }?.webURL,
+                                  jiraBase: secrets.jiraBaseURL, items: allItems)
+            if myName == nil { myName = await CodeHosts.cachedName(store: store, accounts: accounts) }
             events = try await store.events(limit: 300)
             unread = try await store.unreadCount()
         } catch {
@@ -273,11 +295,14 @@ final class AppModel {
         }
     }
 
+    var allItems: [FeedItem] {
+        items.mine + items.review + items.assigned + items.reportees + items.todos + items.pipelines
+            + items.jiraAssigned + items.jiraDone + items.jiraFilters.values.flatMap { $0 }
+    }
+
     func item(withId id: String?) -> FeedItem? {
         guard let id else { return nil }
-        let all = items.mine + items.review + items.assigned + items.reportees + items.todos + items.pipelines
-            + items.jiraAssigned + items.jiraFilters.values.flatMap { $0 }
-        return all.first { $0.id == id }
+        return allItems.first { $0.id == id }
     }
 
     // MARK: Inbox actions
@@ -316,12 +341,61 @@ final class AppModel {
 
     // MARK: AI
 
-    /// Every Claude call goes through the recorder so Settings → AI usage sees it.
+    /// Every Claude call is masked per Settings → AI privacy, then recorded (usage + the exact prompt sent).
     var claude: ClaudeRunning {
-        RecordingClaudeRunner(base: ClaudeCLIRunner(executable: config.expandedClaudePath, defaultModel: config.claudeModel), store: store)
+        let cli = ClaudeCLIRunner(executable: config.expandedClaudePath, defaultModel: config.claudeModel)
+        return PrivacyClaudeRunner(base: RecordingClaudeRunner(base: cli, store: store, logPrompts: config.aiLogDays > 0),
+                                   policy: privacyPolicy)
     }
+
+    var privacyPolicy: PrivacyPolicy {
+        PrivacyPolicy(allowWork: config.aiWorkEnabled, redactSecrets: config.aiRedactSecrets, redactEmails: config.aiRedactEmails,
+                      pseudonymizePeople: config.aiPseudonymizePeople, people: config.aiPseudonymizePeople ? knownPeople : [],
+                      terms: config.aiMaskedTerms)
+    }
+
+    var contentPolicy: AIContentPolicy {
+        AIContentPolicy(sendDiffs: config.aiSendDiffs, sendJiraText: config.aiSendJiraText, sendMeetingNotes: config.aiSendMeetingNotes)
+    }
+
+    /// Everyone named in your data: MR authors and approvers, Jira assignees, your team, you.
+    var knownPeople: [String] {
+        var names = Set<String>()
+        for i in allItems {
+            for n in [i["authorName"], i["assignee"], i["reporter"]].compactMap({ $0 }) { names.insert(n) }
+            for n in (i["approvedBy"] ?? "").split(separator: ",") { names.insert(n.trimmingCharacters(in: .whitespaces)) }
+        }
+        names.formUnion(config.reportees.compactMap(\.name))
+        if let myName { names.insert(myName) }
+        return Array(names)
+    }
+
     var assistant: WorkAssistant {
-        WorkAssistant(store: store, claude: claude, gitlab: GitLabClient(secrets: secrets), jira: JiraClient(secrets: secrets))
+        WorkAssistant(store: store, claude: claude, codeHosts: codeHosts, jira: JiraClient(secrets: secrets), content: contentPolicy)
+    }
+
+    // MARK: Code hosts
+
+    /// Every GitLab / GitHub account from the secrets file (sample accounts in demo mode).
+    var codeHostAccounts: [CodeHostAccount] { DemoData.isDemo ? DemoData.accounts : secrets.codeHostAccounts }
+    var codeHosts: [CodeHostClient] { codeHostAccounts.map { CodeHosts.client(for: $0) } }
+    var hasCodeHost: Bool { !codeHostAccounts.isEmpty }
+
+    /// "Merge Requests", "Pull Requests" or "MRs & PRs", depending on which hosts you use.
+    var changesTitle: String {
+        let kinds = Set(codeHostAccounts.map(\.kind))
+        if kinds == [.github] { return "Pull Requests" }
+        return kinds.count > 1 ? "MRs & PRs" : "Merge Requests"
+    }
+
+    /// Display name for a source-health key ("gitlab.work" → "GitLab · work").
+    func sourceName(_ key: String) -> String {
+        if let a = codeHostAccounts.first(where: { $0.id == key }) { return a.displayName }
+        switch key {
+        case "jira": return "Jira"
+        case "code": return "GitLab / GitHub"
+        default: return key.capitalized
+        }
     }
     var news: NewsService { NewsService(store: store, claude: claude, secrets: secrets) }
 
@@ -483,7 +557,7 @@ final class AppModel {
     func tick(now: Date = Date()) {
         flushHeldIfDue(now: now)
         calendar.reload()
-        if config.weeklyReportEnabled, Calendar.current.component(.weekday, from: now) == config.weeklyReportWeekday,
+        if config.weeklyReportEnabled, config.aiWorkEnabled, Calendar.current.component(.weekday, from: now) == config.weeklyReportWeekday,
            let due = Self.dueTime(config.weeklyReportTime, now: now) {
             Task {
                 if await shouldRun(lastKey: "report.weekly.at", due: due, now: now) { generateWeekly(notify: true) }
@@ -495,7 +569,7 @@ final class AppModel {
         }
         Task {
             let isWeekday = !Calendar.current.isDateInWeekend(now)
-            if config.workBriefEnabled, isWeekday || !config.workBriefWeekdaysOnly,
+            if config.workBriefEnabled, config.aiWorkEnabled, isWeekday || !config.workBriefWeekdaysOnly,
                let due = Self.dueTime(config.workBriefTime, now: now),
                await shouldRun(lastKey: "brief.work.at", due: due, now: now) {
                 generateWorkBrief(notify: true)

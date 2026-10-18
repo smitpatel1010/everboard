@@ -79,14 +79,17 @@ extension Store {
     }
 }
 
-/// Wraps any runner and records tokens/cost for every call (failures too) in the usage table.
+/// Wraps any runner and records tokens/cost for every call (failures too) in the usage table,
+/// and, when `logPrompts` is on, the exact prompt and reply in the AI activity log.
 public struct RecordingClaudeRunner: ClaudeRunning {
     let base: ClaudeRunning
     let store: Store
+    let logPrompts: Bool
 
-    public init(base: ClaudeRunning, store: Store) {
+    public init(base: ClaudeRunning, store: Store, logPrompts: Bool = true) {
         self.base = base
         self.store = store
+        self.logPrompts = logPrompts
     }
 
     public func run(_ request: ClaudeRequest) async throws -> ClaudeResponse {
@@ -96,11 +99,13 @@ public struct RecordingClaudeRunner: ClaudeRunning {
             var usage = r.usage
             if usage.durationMs == 0 { usage.durationMs = Int(Date().timeIntervalSince(started) * 1000) }
             await store.recordUsage(feature: request.feature, usage: usage, costUSD: r.costUSD, ok: true)
+            if logPrompts { await store.logAICall(request, response: r, error: nil) }
             return r
         } catch {
             var usage = ClaudeUsage()
             usage.durationMs = Int(Date().timeIntervalSince(started) * 1000)
             await store.recordUsage(feature: request.feature, usage: usage, costUSD: nil, ok: false)
+            if logPrompts { await store.logAICall(request, response: nil, error: error) }
             throw error
         }
     }

@@ -28,9 +28,9 @@ import Testing
         try "GITLAB_URL=https://gl.example/\nGITLAB_TOKEN=\n".write(to: file, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
         let s = Secrets.load(path: file, environment: ["JIRA_URL": "https://x.atlassian.net", "GITLAB_URL": "ignored"])
-        #expect(s.gitlabBaseURL?.absoluteString == "https://gl.example")
+        #expect(s[.gitlabURL] == "https://gl.example/")   // the file wins over the environment
         #expect(s[.gitlabToken] == nil)
-        #expect(!s.hasGitLab)
+        #expect(!s.hasCodeHost)
         #expect(s[.jiraURL] == "https://x.atlassian.net")
         // Over-permissive file is tightened automatically.
         let perms = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber
@@ -39,14 +39,36 @@ import Testing
 
     @Test func plainHTTPEndpointsAreRejected() {
         let s = Secrets(values: ["GITLAB_URL": "http://gitlab.corp", "GITLAB_TOKEN": "t", "JIRA_URL": "http://localhost:8080"])
-        #expect(s.gitlabBaseURL == nil)
-        #expect(!s.hasGitLab)
+        #expect(!s.hasCodeHost)
         #expect(s.jiraBaseURL != nil) // localhost allowed for testing
+    }
+
+    @Test func secretsLocationPrefersEnvThenProjectThenConfigDir() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let project = root.appendingPathComponent("checkout"), xdg = root.appendingPathComponent("xdg")
+        try fm.createDirectory(at: project, withIntermediateDirectories: true)
+        let env = ["XDG_CONFIG_HOME": xdg.path]
+        let configFile = xdg.appendingPathComponent("everboard/secrets.env")
+
+        // Nothing exists and no Package.swift (installed app): the config dir is the default.
+        #expect(AppInfo.secretsURL(environment: env, projectRoot: project) == configFile)
+        // Source checkout: the project file is the default.
+        try "".write(to: project.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        #expect(AppInfo.secretsURL(environment: env, projectRoot: project).lastPathComponent == "secrets.env")
+        #expect(AppInfo.secretsURL(environment: env, projectRoot: project).deletingLastPathComponent().lastPathComponent == "checkout")
+        // An existing config-dir file beats the not-yet-created project one.
+        try fm.createDirectory(at: configFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "".write(to: configFile, atomically: true, encoding: .utf8)
+        #expect(AppInfo.secretsURL(environment: env, projectRoot: project) == configFile)
+        // $EVERBOARD_SECRETS always wins.
+        let custom = AppInfo.secretsURL(environment: env.merging(["EVERBOARD_SECRETS": "/tmp/mine.env"]) { $1 }, projectRoot: project)
+        #expect(custom.path == "/tmp/mine.env")
     }
 
     @Test func templateParsesToNothingConfigured() {
         let s = Secrets(values: Secrets.parse(Secrets.template))
-        #expect(!s.hasGitLab)
+        #expect(!s.hasCodeHost)
         #expect(!s.hasJira)
     }
 }
@@ -95,6 +117,14 @@ import Testing
     @Test func stripOrderBy() {
         #expect(JQL.stripOrderBy("project = X AND status != Done ORDER BY priority DESC, updated") == "project = X AND status != Done")
         #expect(JQL.stripOrderBy("assignee = currentUser()") == "assignee = currentUser()")
+    }
+
+    @Test func assignedHidesClosedAndArchived() {
+        // "Closed"/"Archive" statuses often have no resolution; the Done category catches them.
+        #expect(JiraSource.assignedJQL.contains("statusCategory != Done"))
+        #expect(JiraSource.assignedJQL.contains("resolution = Unresolved"))
+        // The done list must not share the assigned prefix, or store.items(scopePrefix:) would mix them in.
+        #expect(!JiraSource.Scope.done.hasPrefix(JiraSource.Scope.assigned))
     }
 
     @Test func adfTextAndMentions() throws {

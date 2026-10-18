@@ -99,7 +99,8 @@ public actor Poller {
             var delay = min(source.interval * pow(2, Double(n - 1)), 900)
             switch error {
             case HTTPError.unreachable:
-                health = .unreachable(id == "gitlab" ? "GitLab unreachable — VPN?" : "\(source.displayName) unreachable")
+                // Self-hosted GitLab behind a VPN is the usual cause.
+                health = .unreachable("\(source.displayName) unreachable" + (id.hasPrefix("gitlab") ? " — VPN?" : ""))
             case HTTPError.unauthorized(let code):
                 health = .authFailed("\(source.displayName) auth failed (\(code)) — check token")
                 delay = 900

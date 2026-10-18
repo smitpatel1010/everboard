@@ -2,7 +2,7 @@ import EverboardCore
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var body: some View {
         @Bindable var model = model
@@ -14,6 +14,7 @@ struct SettingsView: View {
             NotificationSettings().tabItem { Text("Notifications") }.tag("notifications")
             WebPanelSettings().tabItem { Text("Web panels") }.tag("web")
             NewsSettings().tabItem { Text("News") }.tag("news")
+            PrivacySettings().tabItem { Text("AI privacy") }.tag("privacy")
             UsageSettings().tabItem { Text("AI usage") }.tag("usage")
         }
         .padding()
@@ -30,7 +31,7 @@ func configBinding<T>(_ model: AppModel, _ keyPath: WritableKeyPath<AppConfig, T
 // MARK: - General
 
 struct GeneralSettings: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var claudeTest: String?
     @State private var loginError: String?
     @State private var launchAtLogin = SystemEvents.launchAtLoginEnabled
@@ -87,13 +88,13 @@ struct GeneralSettings: View {
                 TextField("Time (HH:mm)", text: configBinding(model, \.weeklyReportTime))
             }
             Section("Polling") {
-                Stepper("GitLab every \(Int(model.config.gitlabInterval))s", value: configBinding(model, \.gitlabInterval), in: 30...900, step: 30)
+                Stepper("GitLab / GitHub every \(Int(model.config.gitlabInterval))s", value: configBinding(model, \.gitlabInterval), in: 30...900, step: 30)
                 Stepper("Jira every \(Int(model.config.jiraInterval))s", value: configBinding(model, \.jiraInterval), in: 60...1800, step: 60)
                 Stepper("News every \(Int(model.config.newsInterval / 60)) min", value: configBinding(model, \.newsInterval), in: 900...7200, step: 900)
                 VStack(alignment: .leading) {
-                    TextField("Pinned GitLab projects (comma-separated paths)", text: $pinned)
+                    TextField("Pinned projects / repos (comma-separated paths or URLs)", text: $pinned)
                         .onSubmit { model.updateConfig { $0.pinnedProjects = pinned.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } } }
-                    Text("Your pipelines in these projects are always watched, in addition to projects you've pushed to this week. Press Return to save.")
+                    Text("Your pipelines and workflow runs here are always watched, on top of projects you've pushed to this week. A path (group/project, owner/repo) applies to every account that has it; a URL pins it on that host only. Press Return to save.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -133,7 +134,7 @@ struct GeneralSettings: View {
 // MARK: - Accounts
 
 struct AccountsSettings: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var results: [String] = []
     @State private var checking = false
 
@@ -150,13 +151,31 @@ struct AccountsSettings: View {
             } header: {
                 Text("Tokens live in a private dotenv file, never in this app's settings")
             }
-            Section("Values") {
-                ForEach(Secrets.Key.allCases, id: \.self) { key in
+            Section {
+                if model.codeHostAccounts.isEmpty {
+                    Text("None yet. Set GITLAB_URL + GITLAB_TOKEN and/or GITHUB_URL + GITHUB_TOKEN.").foregroundStyle(.secondary)
+                }
+                ForEach(model.codeHostAccounts) { a in
+                    LabeledContent(a.displayName) {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(a.webURL.absoluteString).foregroundStyle(.secondary)
+                            Text(a.orgs.isEmpty ? "All groups/orgs · token •••• set" : "Only \(a.orgs.joined(separator: ", ")) · token •••• set")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                Text("GitLab & GitHub accounts")
+            } footer: {
+                Text("Add more with a name in the variable, e.g. GITLAB_WORK_URL + GITLAB_WORK_TOKEN or GITHUB_OSS_TOKEN. …_ORGS limits an account to some groups/orgs.")
+            }
+            Section("Jira") {
+                ForEach([Secrets.Key.jiraURL, .jiraEmail, .jiraToken], id: \.self) { key in
                     LabeledContent(key.rawValue) {
                         if let v = model.secrets[key] {
                             Text(key.isSecret ? "•••• set" : v).foregroundStyle(.secondary)
                         } else {
-                            Text(key == .githubToken ? "optional" : "missing").foregroundStyle(key == .githubToken ? Color.secondary : Color.red)
+                            Text("missing").foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -174,10 +193,11 @@ struct AccountsSettings: View {
         results = []
         Task {
             defer { checking = false }
-            if let gl = GitLabClient(secrets: model.secrets) {
-                do { let u = try await gl.currentUser(); results.append("✅ GitLab: \(u.name) (@\(u.username))") }
-                catch { results.append("❌ GitLab: \(error.localizedDescription)") }
-            } else { results.append("➖ GitLab not configured") }
+            if model.codeHosts.isEmpty { results.append("➖ No GitLab or GitHub account") }
+            for host in model.codeHosts {
+                do { let u = try await host.currentUser(); results.append("✅ \(host.account.displayName): \(u.name) (@\(u.username))") }
+                catch { results.append("❌ \(host.account.displayName): \(error.localizedDescription)") }
+            }
             if let jira = JiraClient(secrets: model.secrets) {
                 do { let u = try await jira.myself(); results.append("✅ Jira: \(u.displayName ?? u.accountId)") }
                 catch { results.append("❌ Jira: \(error.localizedDescription)") }
@@ -189,7 +209,7 @@ struct AccountsSettings: View {
 // MARK: - Team
 
 struct TeamSettings: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var newEmails = ""
     @State private var resolving = false
     @State private var status: String?
@@ -202,7 +222,7 @@ struct TeamSettings: View {
                     Button("Add") { add() }.disabled(newEmails.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             } header: {
-                Text("Reportees — you get notified when they open an MR")
+                Text("Reportees — you get notified when they open an MR or PR")
             }
             Section {
                 if model.config.reportees.isEmpty {
@@ -215,33 +235,43 @@ struct TeamSettings: View {
                             if let n = r.name { Text(n).font(.caption).foregroundStyle(.secondary) }
                         }
                         Spacer()
-                        TextField("GitLab username", text: usernameBinding(r))
-                            .frame(width: 180)
-                            .textFieldStyle(.roundedBorder)
-                        Image(systemName: r.username == nil ? "questionmark.circle" : "checkmark.circle.fill")
-                            .foregroundStyle(r.username == nil ? .orange : .green)
+                        ForEach(kinds, id: \.self) { kind in
+                            TextField("\(kind.displayName) username", text: usernameBinding(r, kind), prompt: Text("\(kind.displayName) username"))
+                                .labelsHidden()
+                                .frame(width: 150)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        let resolved = kinds.allSatisfy { r.username(on: $0) != nil }
+                        Image(systemName: resolved ? "checkmark.circle.fill" : "questionmark.circle")
+                            .foregroundStyle(resolved ? .green : .orange)
                         Button(role: .destructive) { model.updateConfig { $0.reportees.removeAll { $0.id == r.id } } } label: { Image(systemName: "trash") }
                             .buttonStyle(.borderless)
                     }
                 }
                 HStack {
-                    Button(resolving ? "Resolving…" : "Resolve usernames from GitLab") { resolve() }
-                        .disabled(resolving || !model.secrets.hasGitLab)
+                    Button(resolving ? "Resolving…" : "Resolve usernames from emails") { resolve() }
+                        .disabled(resolving || !model.hasCodeHost)
                     if let status { Text(status).font(.caption).foregroundStyle(.secondary) }
                 }
             } footer: {
-                Text("GitLab only matches public emails for non-admin tokens; if a lookup fails, type the username.")
+                Text("Hosts only match public emails for normal tokens; if a lookup fails, type the username. The GitLab username is used on every GitLab account, the GitHub one on every GitHub account.")
             }
         }
         .formStyle(.grouped)
     }
 
-    func usernameBinding(_ r: Reportee) -> Binding<String> {
-        Binding(get: { r.username ?? "" }, set: { v in
+    /// Hosts in use; GitLab alone when nothing is configured yet.
+    var kinds: [CodeHostKind] {
+        let used = Set(model.codeHostAccounts.map(\.kind))
+        return used.isEmpty ? [.gitlab] : CodeHostKind.allCases.filter(used.contains)
+    }
+
+    func usernameBinding(_ r: Reportee, _ kind: CodeHostKind) -> Binding<String> {
+        Binding(get: { r.username(on: kind) ?? "" }, set: { v in
             model.updateConfig { c in
                 if let i = c.reportees.firstIndex(where: { $0.id == r.id }) {
                     let t = v.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "@", with: "")
-                    c.reportees[i].username = t.isEmpty ? nil : t
+                    if kind == .gitlab { c.reportees[i].username = t.isEmpty ? nil : t } else { c.reportees[i].githubUsername = t.isEmpty ? nil : t }
                 }
             }
         })
@@ -254,25 +284,29 @@ struct TeamSettings: View {
             for e in emails where !c.reportees.contains(where: { $0.id == e.lowercased() }) { c.reportees.append(Reportee(email: e)) }
         }
         newEmails = ""
-        if model.secrets.hasGitLab { resolve() }
+        if model.hasCodeHost { resolve() }
     }
 
     func resolve() {
-        guard let gl = GitLabClient(secrets: model.secrets) else { return }
+        let hosts = model.codeHosts
+        guard !hosts.isEmpty else { return }
         resolving = true
         Task {
             defer { resolving = false }
             var found = 0, missing = 0
-            for r in model.config.reportees where r.username == nil {
-                if let u = try? await gl.resolveUser(email: r.email) {
+            for r in model.config.reportees {
+                for kind in kinds where r.username(on: kind) == nil {
+                    var user: CodeHostUser?
+                    for host in hosts where host.account.kind == kind && user == nil { user = try? await host.resolveUser(email: r.email) }
+                    guard let u = user else { missing += 1; continue }
                     found += 1
                     model.updateConfig { c in
                         if let i = c.reportees.firstIndex(where: { $0.id == r.id }) {
-                            c.reportees[i].username = u.username
-                            c.reportees[i].name = u.name
+                            if kind == .gitlab { c.reportees[i].username = u.username } else { c.reportees[i].githubUsername = u.username }
+                            if c.reportees[i].name == nil { c.reportees[i].name = u.name }
                         }
                     }
-                } else { missing += 1 }
+                }
             }
             status = "Resolved \(found)" + (missing > 0 ? ", \(missing) need a username typed in" : "")
         }
@@ -282,7 +316,7 @@ struct TeamSettings: View {
 // MARK: - Jira
 
 struct JiraSettings: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var favourites: [JiraFilter] = []
     @State private var loading = false
     @State private var error: String?
@@ -368,7 +402,7 @@ struct JiraSettings: View {
 // MARK: - Notifications
 
 struct NotificationSettings: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
 
     var body: some View {
         Form {
@@ -430,7 +464,7 @@ struct NotificationSettings: View {
 // MARK: - Web panels
 
 struct WebPanelSettings: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var name = ""
     @State private var url = ""
 
@@ -467,7 +501,7 @@ struct WebPanelSettings: View {
 // MARK: - News
 
 struct NewsSettings: View {
-    @Environment(AppModel.self) private var model
+    private var model: AppModel { .shared }
     @State private var prefs = ""
     @State private var prefsSaved = false
     @State private var keywords = ""

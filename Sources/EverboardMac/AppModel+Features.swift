@@ -5,7 +5,7 @@ import Foundation
 // Reports, in-app actions, story following and "ask the news".
 extension AppModel {
     var reports: ReportService {
-        ReportService(store: store, claude: claude, gitlab: GitLabClient(secrets: secrets), jira: JiraClient(secrets: secrets))
+        ReportService(store: store, claude: claude, codeHosts: codeHosts, jira: JiraClient(secrets: secrets))
     }
 
     func loadReportsAndFollows() async {
@@ -61,15 +61,18 @@ extension AppModel {
         }
     }
 
+    /// Copies markdown as plain text plus HTML with clickable MR/Jira links, so pasting into Teams or Outlook keeps them.
     func copyToClipboard(_ text: String) {
+        let linked = refLinker.linkify(text)
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.general.setString(linked, forType: .string)
+        NSPasteboard.general.setString(MarkdownHTML.render(linked), forType: .html)
         ToastCenter.shared.show(.init(title: "Copied to clipboard", body: "Paste it into Teams or an email.", actionTitle: nil, onClick: {}, onAction: nil), duration: 3)
     }
 
-    // MARK: In-app actions (GitLab token needs the `api` scope)
+    // MARK: In-app actions (tokens need write scopes: GitLab `api`, GitHub `repo`)
 
-    private func act(_ success: String, _ work: @escaping () async throws -> Void) {
+    private func act(_ success: String, scopeHint: String? = nil, _ work: @escaping () async throws -> Void) {
         Task {
             do {
                 try await work()
@@ -77,7 +80,7 @@ extension AppModel {
                 refreshAll()
             } catch HTTPError.unauthorized(let code) {
                 ToastCenter.shared.show(.init(title: "Not allowed (HTTP \(code))",
-                                              body: "For GitLab actions your token needs the `api` scope (read_api is read-only).",
+                                              body: scopeHint ?? "Your token doesn't allow this action.",
                                               actionTitle: nil, onClick: {}, onAction: nil))
             } catch {
                 ToastCenter.shared.show(.init(title: "Action failed", body: error.localizedDescription, actionTitle: nil, onClick: {}, onAction: nil))
@@ -85,26 +88,33 @@ extension AppModel {
         }
     }
 
+    /// Runs a write action on the account the item came from.
+    private func act(on item: FeedItem, _ success: String, _ work: @escaping (CodeHostClient) async throws -> Void) {
+        guard let host = codeHosts.client(for: item) else {
+            ToastCenter.shared.show(.init(title: "Account not configured", body: "\(item.subtitle) belongs to an account that's no longer in your secrets file.",
+                                          actionTitle: nil, onClick: {}, onAction: nil))
+            return
+        }
+        act(success, scopeHint: host.writeScopeHint) { try await work(host) }
+    }
+
     func approve(_ item: FeedItem) {
-        guard let gl = GitLabClient(secrets: secrets), let pid = item["projectId"], let iid = item["iid"] else { return }
-        act("Approved \(item.subtitle)") { try await gl.approve(projectId: pid, iid: iid) }
+        act(on: item, "Approved \(item.subtitle)") { try await $0.approve(item) }
     }
 
     func retryPipeline(_ item: FeedItem) {
-        guard let gl = GitLabClient(secrets: secrets), let pid = item["projectId"],
-              let pipeline = item["pipelineId"] else { return }
-        act("Retrying pipeline #\(pipeline)") { try await gl.retryPipeline(projectId: pid, pipelineId: pipeline) }
+        act(on: item, item.source == "github" ? "Re-running failed jobs" : "Retrying pipeline #\(item["pipelineId"] ?? "")") {
+            try await $0.retryPipeline(item)
+        }
     }
 
     func markTodoDone(_ item: FeedItem) {
-        guard let gl = GitLabClient(secrets: secrets) else { return }
-        let id = String(item.id.dropFirst("gitlab.todo:".count))
-        act("To-do marked done") { try await gl.markTodoDone(id: id) }
+        act(on: item, "To-do marked done") { try await $0.markTodoDone(item) }
     }
 
     func commentOnMR(_ item: FeedItem, text: String) {
-        guard let gl = GitLabClient(secrets: secrets), let pid = item["projectId"], let iid = item["iid"], !text.isEmpty else { return }
-        act("Comment posted on \(item.subtitle)") { try await gl.comment(projectId: pid, iid: iid, body: text) }
+        guard !text.isEmpty else { return }
+        act(on: item, "Comment posted on \(item.subtitle)") { try await $0.comment(item, body: text) }
     }
 
     func jiraTransitions(_ key: String) async -> [JiraClient.Transition] {
@@ -182,14 +192,14 @@ extension AppModel {
         Meeting: \(meeting.title)
         When: \(meeting.start.formatted()) – \(meeting.end.formatted(date: .omitted, time: .shortened))
         Attendees: \(meeting.attendees.joined(separator: ", "))
-        Notes: \(String((meeting.notes ?? "").prefix(3000)))
+        Notes: \(config.aiSendMeetingNotes ? String((meeting.notes ?? "").prefix(3000)) : "(withheld by privacy settings)")
 
         Related work:
         \(related.prefix(25).map { "- \($0.subtitle): \($0.title) [\($0.status ?? "")] \($0["authorName"] ?? $0["assignee"] ?? "")" }.joined(separator: "\n"))
         """
         Task {
             do {
-                let r = try await claude.run(ClaudeRequest(prompt: prompt, feature: "meeting.prep"))
+                let r = try await claude.run(ClaudeRequest(prompt: prompt, feature: "meeting.prep", people: meeting.attendees))
                 if aiPanel?.id == panelID { aiPanel?.text = r.text }
             } catch {
                 if aiPanel?.id == panelID { aiPanel?.error = error.localizedDescription }
