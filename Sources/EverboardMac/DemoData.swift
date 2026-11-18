@@ -344,6 +344,15 @@ enum DemoData {
         menu.orderFront(nil)
         try? await Task.sleep(nanoseconds: 800_000_000)
         save(host, to: dir.appendingPathComponent("menubar.png"))
+        let panelHost = NSHostingView(rootView: AssistantOverlay(close: {}).background(Color(nsColor: .windowBackgroundColor)))
+        let panelWindow = NSWindow(contentRect: NSRect(origin: NSPoint(x: -4000, y: 0), size: AssistantPanel.size), styleMask: [.borderless],
+                                   backing: .buffered, defer: false)
+        panelWindow.appearance = snapshotAppearance
+        panelWindow.contentView = panelHost
+        panelWindow.orderFront(nil)
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        save(panelHost, to: dir.appendingPathComponent("assistant-panel.png"))
+        panelWindow.orderOut(nil)
         for (name, query) in [("palette-empty", ""), ("palette-search", "pay"), ("palette-jira", "jira cache")] {
             let state = PaletteState(model: model, close: {})
             state.query = query

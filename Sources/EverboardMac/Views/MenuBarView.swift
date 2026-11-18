@@ -1,70 +1,120 @@
 import EverboardCore
 import SwiftUI
 
-/// The popover under the menu-bar icon.
+/// The popover under the menu-bar icon: counts, the Assistant, meetings and the latest activity.
 struct MenuBarView: View {
     private var model: AppModel { .shared }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(AppInfo.name).font(.headline)
-                if model.unread > 0 {
-                    Text("\(model.unread) unread").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            VStack(alignment: .leading, spacing: 12) {
+                askBar
+                stats
+                if let warning = attention {
+                    Label(warning, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange)
                 }
-                Spacer()
-                Button { AssistantModel.shared.listenFromHotkey() } label: { Image(systemName: "mic") }
-                    .buttonStyle(.borderless).help("Talk to your agents (⌥⇧Space)")
-                Button { model.refreshAll() } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless).help("Refresh now")
-                Button { model.showDashboard(.settings) } label: { Image(systemName: "gearshape") }
-                    .buttonStyle(.borderless).help("Settings")
+                MeetingsSection()
+                activity
             }
-            HealthChips(compact: false)
+            .padding(14)
+            footer
+        }
+        .frame(width: 380)
+        .background(Theme.canvas)
+    }
 
-            if let warning = attention { Label(warning, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange) }
-
-            MeetingsSection()
-
-            Divider()
-            if model.events.isEmpty {
-                Text("Nothing yet — updates show up here.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 8)
-            } else {
-                VStack(spacing: 2) {
-                    ForEach(model.events.prefix(8)) { e in
-                        Button { model.open(e) } label: { EventRow(event: e, compact: true) }
-                            .buttonStyle(.plain)
+    private var header: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 6).fill(Theme.accentGradient).frame(width: 22, height: 22)
+                .overlay(Image(systemName: "square.stack.3d.up.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.white))
+            VStack(alignment: .leading, spacing: 0) {
+                Text(AppInfo.name).font(.system(size: 13, weight: .semibold))
+                HStack(spacing: 6) {
+                    ForEach(model.health.keys.sorted(), id: \.self) { key in
+                        let h = model.health[key]!
+                        HStack(spacing: 3) {
+                            Circle().fill(HealthChips.color(h)).frame(width: 5, height: 5)
+                            Text(model.sourceName(key)).font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .help(h.label)
                     }
                 }
             }
-            Divider()
-
-            HStack(spacing: 8) {
-                quickButton("Dashboard", "rectangle.grid.2x2") { model.showDashboard(.inbox) }
-                quickButton("Work brief", "sun.max") { model.showDashboard(.workBrief) }
-                quickButton("Reports", "doc.text") { model.showDashboard(.reports) }
-                quickButton("World & Tech", "globe") { model.showDashboard(.worldBrief) }
-            }
-            if !model.heldEvents.isEmpty {
-                Button("\(model.heldEvents.count) batched notifications — show now") {
-                    let batch = model.heldEvents
-                    model.heldEvents = []
-                    model.heldSince = nil
-                    model.notifier.postDigest(batch)
-                }
-                .buttonStyle(.borderless).font(.caption)
-            }
-            HStack {
-                Button("Mark all read") { model.markAllRead() }.disabled(model.unread == 0)
-                Button("Search ⌥Space") { CommandPalette.shared.show() }
-                Spacer()
-                Button("Quit") { NSApp.terminate(nil) }
-            }
-            .buttonStyle(.borderless)
-            .font(.callout)
+            Spacer()
+            iconButton("arrow.clockwise", "Refresh now") { model.refreshAll() }
+            iconButton("macwindow", "Open dashboard") { model.showDashboard() }
+            iconButton("gearshape", "Settings") { model.showDashboard(.settings) }
         }
-        .padding(12)
-        .frame(width: 380)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
+    }
+
+    private var askBar: some View {
+        Button { AssistantModel.shared.listenFromHotkey() } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "mic.fill").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 28, height: 28).background(Circle().fill(Theme.accentGradient))
+                Text("Ask your agents").foregroundStyle(.primary)
+                Spacer()
+                Text("⌥⇧Space").font(.caption).foregroundStyle(.tertiary)
+            }
+            .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.hairline))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var stats: some View {
+        let i = model.items
+        let failed = i.pipelines.filter { $0.status == "failed" && ($0.updatedAt ?? .distantPast) > Date().addingTimeInterval(-86400) }.count
+        return HStack(spacing: 8) {
+            stat(i.reviewReady.count, "Reviews", .blue) { model.showDashboard(.mergeRequests) }
+            stat(failed, "Failed", failed > 0 ? .red : .green) { model.showDashboard(.pipelines) }
+            stat(i.jiraAssigned.count, "Jira", .orange) { model.showDashboard(.jira) }
+            stat(model.unread, "Unread", .teal) { model.showDashboard(.inbox) }
+        }
+    }
+
+    @ViewBuilder private var activity: some View {
+        HStack {
+            Text("Latest").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Spacer()
+            if model.unread > 0 { Button("Mark all read") { model.markAllRead() }.buttonStyle(.borderless).font(.caption) }
+        }
+        if model.events.isEmpty {
+            Text("Nothing yet. Updates show up here.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 6)
+        } else {
+            VStack(spacing: 2) {
+                ForEach(model.events.prefix(6)) { e in
+                    Button { model.open(e) } label: { EventRow(event: e, compact: true) }.buttonStyle(.plain)
+                }
+            }
+        }
+        if !model.heldEvents.isEmpty {
+            Button("\(model.heldEvents.count) batched notifications — show now") {
+                let batch = model.heldEvents
+                model.heldEvents = []
+                model.heldSince = nil
+                model.notifier.postDigest(batch)
+            }
+            .buttonStyle(.borderless).font(.caption)
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 14) {
+            Button { model.showDashboard(.workBrief) } label: { Label("Brief", systemImage: "sun.max") }
+            Button { model.showDashboard(.reports) } label: { Label("Team", systemImage: "person.2") }
+            Button { CommandPalette.shared.show() } label: { Label("Search", systemImage: "magnifyingglass") }
+            Spacer()
+            Button("Quit") { NSApp.terminate(nil) }
+        }
+        .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 1) }
     }
 
     var attention: String? {
@@ -73,15 +123,23 @@ struct MenuBarView: View {
         return nil
     }
 
-    func quickButton(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+    func iconButton(_ icon: String, _ help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: icon).frame(width: 24, height: 24) }
+            .buttonStyle(.borderless).foregroundStyle(.secondary).help(help)
+    }
+
+    func stat(_ value: Int, _ title: String, _ tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: icon).font(.system(size: 15))
-                Text(title).font(.caption)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(value)").font(.system(size: 18, weight: .bold, design: .rounded)).monospacedDigit()
+                    .foregroundStyle(value > 0 ? tint : Color.secondary)
+                Text(title).font(.caption).foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

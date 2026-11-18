@@ -44,7 +44,9 @@ final class AssistantModel {
     func load() async {
         guard !loaded else { return }
         loaded = true
-        chats = (try? await model.store.chats()) ?? []
+        // Keep anything started before the saved chats finished loading (e.g. a question asked from Home).
+        let saved = (try? await model.store.chats()) ?? []
+        chats += saved.filter { s in !chats.contains { $0.id == s.id } }
         if currentID == nil { currentID = chats.first?.id }
     }
 
@@ -105,10 +107,9 @@ final class AssistantModel {
         Task { await voice.start(onDeviceOnly: model.config.voiceOnDeviceOnly) { [weak self] text in self?.handle(text, spoken: true) } }
     }
 
-    /// From the hotkey or a mic button outside the Assistant: show it and start (or stop) listening.
+    /// From the hotkey or a mic button outside the Assistant: the floating panel over whatever app you're in.
     func listenFromHotkey() {
-        model.showDashboard(.assistant)
-        toggleListening()
+        AssistantPanel.shared.hotkey()
     }
 
     // MARK: Handling
@@ -237,9 +238,10 @@ final class AssistantModel {
         }
     }
 
-    /// True when the Assistant is on screen, showing this chat, in the active app.
+    /// True when this chat is on screen: the floating panel, or the Assistant page in the active app.
     func isLookingAtChat(_ id: String? = nil) -> Bool {
-        NSApp.isActive && model.selection == .assistant && (id == nil || id == currentID)
+        let shown = AssistantPanel.shared.isVisible || (NSApp.isActive && model.selection == .assistant)
+        return shown && (id == nil || id == currentID)
     }
 
     // MARK: Helpers

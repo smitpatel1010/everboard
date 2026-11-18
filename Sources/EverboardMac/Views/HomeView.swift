@@ -10,6 +10,7 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HomeHeader()
+                AskBar()
                 KPIRow()
                 // Two columns when there's room, one below the other when the window is narrow.
                 ViewThatFits(in: .horizontal) {
@@ -35,6 +36,7 @@ struct HomeView: View {
         VStack(spacing: 18) {
             NeedsYouCard()
             BriefCard()
+            RecentRunsCard()
             ActivityCard()
         }
     }
@@ -75,9 +77,8 @@ private struct HomeCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color(nsColor: .separatorColor).opacity(0.6)))
-        .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
     }
 }
 
@@ -127,45 +128,30 @@ private struct HomeHeader: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { ctx in
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ctx.date.formatted(.dateTime.weekday(.wide).day().month(.wide)).uppercased())
+                        .font(.caption.weight(.semibold)).foregroundStyle(Theme.accent).tracking(0.6)
                     Text(greeting(ctx.date)).font(.system(size: 28, weight: .bold))
-                    Text(ctx.date.formatted(.dateTime.weekday(.wide).day().month(.wide))).font(.title3).opacity(0.9)
-                    if !summary.isEmpty {
-                        Text(summary).font(.callout.weight(.medium)).opacity(0.95).padding(.top, 4)
-                    }
+                    if !summary.isEmpty { Text(summary).font(.title3).foregroundStyle(.secondary) }
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 10) {
+                Spacer(minLength: 12)
+                if let next = model.calendar.next {
                     HStack(spacing: 8) {
-                        ForEach(model.health.keys.sorted(), id: \.self) { key in
-                            let h = model.health[key]!
-                            HStack(spacing: 5) {
-                                Circle().fill(h.isHealthy ? Color.green : (h == .idle ? Color.white.opacity(0.6) : Color.orange)).frame(width: 7, height: 7)
-                                Text(model.sourceName(key)).font(.caption.weight(.medium))
-                            }
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(.white.opacity(0.18), in: Capsule())
-                            .help(h.label)
+                        Image(systemName: "calendar").foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(next.isNow ? "Now" : "Next at \(next.start.formatted(date: .omitted, time: .shortened))")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text(next.title).font(.callout.weight(.medium)).lineLimit(1)
                         }
                     }
-                    if let next = model.calendar.next {
-                        Label(next.isNow ? "Now: \(next.title)" : "Next: \(next.title) at \(next.start.formatted(date: .omitted, time: .shortened))",
-                              systemImage: "calendar")
-                            .font(.callout.weight(.medium)).lineLimit(1)
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(.white.opacity(0.18), in: Capsule())
-                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline))
+                    .frame(maxWidth: 280, alignment: .trailing)
                 }
             }
-            .foregroundStyle(.white)
-            .padding(22)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(colors: [Color(red: 0.24, green: 0.36, blue: 0.95), Color(red: 0.52, green: 0.30, blue: 0.90),
-                                        Color(red: 0.85, green: 0.35, blue: 0.62)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing),
-                in: RoundedRectangle(cornerRadius: 18))
+            .padding(.top, 6)
         }
     }
 
@@ -205,11 +191,11 @@ private struct KPIRow: View {
         HStack(spacing: 12) {
             KPITile(icon: "eye", tint: .blue, value: i.reviewReady.count, title: "To review",
                     detail: oldestReview.map { "oldest \(Dates.age($0))" } ?? "queue is clear") { model.selection = .mergeRequests }
-            KPITile(icon: "arrow.triangle.pull", tint: .purple, value: i.mine.count, title: "My open " + (model.changesTitle == "Pull Requests" ? "PRs" : model.changesTitle == "MRs & PRs" ? "MRs & PRs" : "MRs"),
+            KPITile(icon: "arrow.triangle.pull", tint: .purple, value: i.mine.count, title: "Yours",
                     detail: "\(red) red · \(ready) ready") { model.selection = .mergeRequests }
-            KPITile(icon: "xmark.octagon", tint: failed > 0 ? .red : .green, value: failed, title: "Failed pipelines",
-                    detail: "last 24 hours") { model.selection = .pipelines }
-            KPITile(icon: "checklist", tint: .orange, value: i.jiraAssigned.count, title: "Jira assigned",
+            KPITile(icon: "xmark.octagon", tint: failed > 0 ? .red : .green, value: failed, title: "Failed",
+                    detail: "pipelines, last 24h") { model.selection = .pipelines }
+            KPITile(icon: "checklist", tint: .orange, value: i.jiraAssigned.count, title: "Jira",
                     detail: high > 0 ? "\(high) high priority" : "none high priority") { model.selection = .jira }
             KPITile(icon: "tray", tint: .teal, value: model.unread, title: "Unread", detail: "in your inbox") { model.selection = .inbox }
         }
@@ -227,28 +213,100 @@ private struct KPITile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(tint)
-                        .frame(width: 30, height: 30).background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary).opacity(hover ? 1 : 0)
-                }
-                Text("\(value)").font(.system(size: 30, weight: .bold, design: .rounded)).monospacedDigit()
+            HStack(spacing: 12) {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(tint)
+                    .frame(width: 30, height: 30).background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.callout.weight(.medium))
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(value)").font(.system(size: 22, weight: .bold, design: .rounded)).monospacedDigit()
+                        Text(title).font(.callout.weight(.medium)).lineLimit(1)
+                    }
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
+                Spacer(minLength: 0)
             }
-            .padding(14)
+            .padding(.horizontal, 12).padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(hover ? tint.opacity(0.6) : Color(nsColor: .separatorColor).opacity(0.6)))
-            .shadow(color: .black.opacity(hover ? 0.08 : 0.04), radius: hover ? 10 : 6, y: 2)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(hover ? tint.opacity(0.55) : Theme.hairline))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+    }
+}
+
+/// The front door to the Assistant: type here, or press the mic.
+private struct AskBar: View {
+    private var model: AppModel { .shared }
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles").foregroundStyle(Theme.accent)
+                TextField("Ask or tell your agents… “what needs me today?”, “review the payments MR”", text: $text)
+                    .textFieldStyle(.plain).font(.system(size: 15)).focused($focused)
+                    .onSubmit(send)
+                Text("⌥⇧Space").font(.caption2).foregroundStyle(.tertiary)
+                Button {
+                    model.selection = .assistant
+                    AssistantModel.shared.toggleListening()
+                } label: {
+                    Image(systemName: "mic.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 32, height: 32).background(Circle().fill(Theme.accentGradient))
+                }
+                .buttonStyle(.plain).help("Talk to your agents")
+            }
+            .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(focused ? Theme.accent.opacity(0.6) : Theme.hairline, lineWidth: focused ? 2 : 1))
+            HStack(spacing: 8) {
+                ForEach(AssistantModel.suggestions.prefix(3), id: \.self) { s in
+                    Button { ask(s) } label: {
+                        Text(s).font(.caption).foregroundStyle(.secondary)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Capsule().stroke(Theme.hairline))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    func send() {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        text = ""
+        if !t.isEmpty { ask(t) }
+    }
+
+    func ask(_ t: String) {
+        model.selection = .assistant
+        AssistantModel.shared.handle(t, spoken: false)
+    }
+}
+
+/// Latest agent runs, with live status.
+private struct RecentRunsCard: View {
+    private var model: AppModel { .shared }
+    private var agents: AgentCenter { .shared }
+
+    var body: some View {
+        let runs = Array(agents.history.prefix(4))
+        if !runs.isEmpty {
+            HomeCard(title: "Agent runs", icon: "terminal", tint: .purple, actionTitle: "All runs", action: { model.selection = .agentRuns }) {
+                VStack(spacing: 2) {
+                    ForEach(runs) { r in
+                        let run = agents.live[r.id]?.record ?? r
+                        HomeRow(icon: run.status == .running ? "circle.dotted" : run.status == .succeeded ? "checkmark" : "xmark",
+                                tint: run.status == .running ? .blue : run.status == .succeeded ? .green : .red,
+                                title: run.actionName, detail: "\(run.itemRef) · \(Dates.age(run.ts)) ago",
+                                tag: run.status.label) { agents.show(run.id) }
+                    }
+                }
+            }
+        }
     }
 }
 

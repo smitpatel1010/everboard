@@ -310,6 +310,7 @@ final class AppModel {
             if myName == nil { myName = await CodeHosts.cachedName(store: store, accounts: accounts) }
             events = try await store.events(limit: 300)
             unread = try await store.unreadCount()
+            NSApp.dockTile.badgeLabel = unread > 0 ? "\(min(unread, 99))" : nil
         } catch {
             storeError = error.localizedDescription
         }

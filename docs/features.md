@@ -18,6 +18,10 @@ Clicking the icon opens a popover with:
 
 Open it from the menu, from the Dock while it's open, by launching the app again, or with ⌥Space → "Open dashboard".
 
+**Home.** A greeting with what's waiting and your next meeting; an **ask bar** for the Assistant with a few suggestions; counts for reviews, your open changes, failed pipelines, Jira and unread (click one to jump there); then **Needs you**, the work brief, recent agent runs and activity, with today's meetings, your team, Jira, news and AI use on the side. On narrow windows the two columns stack.
+
+**Menu bar and Dock.** The menu-bar popover has the ask bar, the four counts, today's meetings, the latest activity and quick links. While the dashboard is open the Dock icon shows your unread count, and right-clicking it offers Ask, Inbox, Reviews, failed Pipelines, Work brief, Team, Search and Refresh.
+
 **Layout.** A sidebar on the left (Home, Inbox, Assistant; Work; Team; Feeds; Personal; Agents; Settings at the bottom, with a dot per source showing its health), the page in the middle, and a **peek panel** on the right for whatever you select. ⌘\ collapses the sidebar to icons. The search box and mic at the top of the sidebar open the command palette and the Assistant.
 
 **Working with lists.** Every list (inbox, MRs/PRs, pipelines, Jira, feeds) works the same way:
@@ -106,7 +110,12 @@ cursor-agent -p "Review {sourceBranch} against {targetBranch}. Report only."
 
 ## Assistant and voice
 
-The **Assistant** (sidebar, ⌘3, the mic at the top of the sidebar or in the menu bar, or **⌥⇧Space** from anywhere) lets you work with your agents by talking or typing:
+The **Assistant** lets you work with your agents by talking or typing, from anywhere:
+- **⌥⇧Space in any app** opens it as a floating panel over what you're doing, already listening. Press it again to send, or esc to close. The app you were in stays in front, and the panel shares chats with the Assistant page (the expand button opens the full page).
+- In the dashboard: the Assistant page (⌘3), the ask bar on Home, or the mic at the top of the sidebar.
+- From the menu bar or the Dock menu: **Ask your agents**.
+
+You can ask things like:
 
 - "What needs me today?", "Which reviews have waited the longest?": answered from your dashboard data.
 - "Run deep review on the payments retry MR": picks the agent action and the item, then **asks first** with a card showing the exact command. Say "yes" or click **Run**; say "no" or **Cancel** to drop it. **Show output** opens the run.

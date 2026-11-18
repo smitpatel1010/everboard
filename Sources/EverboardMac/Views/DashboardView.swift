@@ -189,7 +189,7 @@ struct Sidebar: View {
                 }
             }
             if collapsed {
-                Button { AssistantModel.shared.listenFromHotkey() } label: { Image(systemName: "mic.fill") }
+                Button { listenHere() } label: { Image(systemName: "mic.fill") }
                     .buttonStyle(.borderless).frame(maxWidth: .infinity).help("Talk to your agents (⌥⇧Space)")
             } else {
                 HStack(spacing: 6) {
@@ -205,7 +205,7 @@ struct Sidebar: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    Button { AssistantModel.shared.listenFromHotkey() } label: {
+                    Button { listenHere() } label: {
                         Image(systemName: VoiceInput.shared.isListening ? "waveform" : "mic.fill").font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.white).frame(width: 28, height: 28)
                             .background(Circle().fill(VoiceInput.shared.isListening ? AnyShapeStyle(Color.red) : AnyShapeStyle(Theme.accentGradient)))
@@ -215,6 +215,12 @@ struct Sidebar: View {
             }
         }
         .padding(.horizontal, 14).padding(.bottom, 4)
+    }
+
+    /// Inside the dashboard, talking happens on the Assistant page rather than in the floating panel.
+    private func listenHere() {
+        model.selection = .assistant
+        AssistantModel.shared.toggleListening()
     }
 
     private var footer: some View {

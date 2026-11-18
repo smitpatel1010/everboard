@@ -202,7 +202,7 @@ struct MicButton: View {
     }
 }
 
-private struct MessageBubble: View {
+struct MessageBubble: View {
     private var agents: AgentCenter { .shared }
     private var assistant: AssistantModel { .shared }
     let message: AssistantChat.Message
@@ -241,7 +241,7 @@ private struct MessageBubble: View {
 }
 
 /// The "run this?" card inside the conversation.
-private struct ConfirmCard: View {
+struct ConfirmCard: View {
     let plan: AgentPlan
     let messageID: String
 
@@ -266,7 +266,7 @@ private struct ConfirmCard: View {
     }
 }
 
-private struct ThinkingBubble: View {
+struct ThinkingBubble: View {
     var body: some View {
         HStack(spacing: 10) {
             Circle().fill(Theme.accentGradient).frame(width: 26, height: 26)
