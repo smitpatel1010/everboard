@@ -267,8 +267,8 @@ enum DemoData {
         window.orderFront(nil)
         let screens: [(String, SidebarItem)] = [("inbox", .inbox), ("home", .home), ("aiactivity", .aiActivity), ("mrs", .mergeRequests), ("pipelines", .pipelines),
                                                 ("jira", .jira), ("workbrief", .workBrief), ("reports", .reports), ("world", .worldBrief), ("settings", .settings),
-                                                ("agentruns", .agentRuns), ("feed", .feed("deploys"))]
-        let settingsTabs = ["usage", "privacy", "accounts", "team", "agents", "sources", "brain"]
+                                                ("agentruns", .agentRuns), ("feed", .feed("deploys")), ("assistant", .assistant)]
+        let settingsTabs = ["usage", "privacy", "accounts", "team", "agents", "voice", "sources", "brain"]
         for (name, item) in screens + settingsTabs.map({ ($0, SidebarItem.settings) }) {
             model.settingsTab = settingsTabs.contains(name) ? name : "general"
             model.selection = item

@@ -30,6 +30,17 @@ final class Speech: NSObject, AVSpeechSynthesizerDelegate {
         synth.speak(u)
     }
 
+    /// Says a short reply in the chosen voice, interrupting anything else.
+    func say(_ text: String, voice: String, rate: Double) {
+        synth.stopSpeaking(at: .immediate)
+        let u = AVSpeechUtterance(string: Self.spoken(text))
+        u.voice = AVSpeechSynthesisVoice(identifier: voice) ?? Self.bestEnglishVoice
+        u.rate = Float(rate)
+        speakingID = "assistant"
+        paused = false
+        synth.speak(u)
+    }
+
     func stop() {
         synth.stopSpeaking(at: .immediate)
         speakingID = nil

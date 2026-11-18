@@ -7,12 +7,10 @@ struct CustomFeedView: View {
     private var model: AppModel { .shared }
     let source: CustomSourceConfig
     @State private var search = ""
+    @State private var selection: String?
 
-    var items: [FeedItem] {
-        let all = model.items.custom[source.id] ?? []
-        guard !search.isEmpty else { return all }
-        return all.filter { "\($0.title) \($0.subtitle) \($0.status ?? "") \($0.author ?? "")".localizedCaseInsensitiveContains(search) }
-    }
+    var all: [FeedItem] { model.items.custom[source.id] ?? [] }
+    var items: [FeedItem] { all.filter { $0.matches(search) } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,7 +18,7 @@ struct CustomFeedView: View {
                 Label(source.kind == .folder ? source.folder : source.command, systemImage: source.kind == .folder ? "folder" : "terminal")
                     .font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 Spacer()
-                TextField("Filter", text: $search).textFieldStyle(.roundedBorder).frame(width: 200)
+                ListSearchField(text: $search)
                 Button { Task { await model.poller.refreshNow(source.sourceID) } } label: { Image(systemName: "arrow.clockwise") }
                     .help("Refresh this feed now")
             }
@@ -35,9 +33,11 @@ struct CustomFeedView: View {
                            message: source.kind == .folder ? "No markdown notes found\(source.tag.isEmpty ? "" : " tagged #\(source.tag)")."
                                : "The command printed no items yet. See docs/extending.md for the JSON format.")
             } else {
-                List(items) { CustomItemRow(item: $0) }
+                List(items, selection: $selection) { CustomItemRow(item: $0).tag($0.id) }
+                    .itemContextMenu { id in all.first { $0.id == id } }
             }
         }
+        .itemInspector(selection.flatMap { id in all.first { $0.id == id } }) { selection = nil }
         .navigationTitle(source.name)
     }
 }
@@ -62,27 +62,6 @@ struct CustomItemRow: View {
             }
         }
         .padding(.vertical, 3)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { open() }
-        .contextMenu {
-            Button(item["path"] != nil && item.url == nil ? "Open note" : "Open") { open() }.disabled(item.url == nil && item["path"] == nil)
-            if let path = item["path"] { Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) } }
-            AgentActionItems(item: item)
-            Divider()
-            Button(model.config.isMuted(item.id) ? "Unmute" : "Mute notifications for this item") {
-                if model.config.isMuted(item.id) { model.unmute(itemId: item.id) } else { model.mute(itemId: item.id, for: nil) }
-            }
-        }
-    }
-
-    /// Web links open in the browser; folder notes open in their default app (e.g. Obsidian).
-    func open() {
-        if item.url != nil { model.open(item.url); return }
-        if let path = item["path"], let source = model.config.customSources.first(where: { $0.id == item["feed"] }),
-           source.kind == .folder {
-            let root = URL(fileURLWithPath: (source.folder as NSString).expandingTildeInPath).standardizedFileURL.path
-            let file = URL(fileURLWithPath: path).standardizedFileURL
-            if file.path.hasPrefix(root + "/") { NSWorkspace.shared.open(file) }
-        }
+        .statusAccent(item.status)
     }
 }

@@ -34,7 +34,7 @@ struct AIPanel: Identifiable {
 }
 
 enum SidebarItem: Hashable {
-    case home, inbox, mergeRequests, pipelines, jira, workBrief, reports, worldBrief, aiActivity, settings, agentRuns
+    case home, inbox, mergeRequests, pipelines, jira, workBrief, reports, worldBrief, aiActivity, settings, agentRuns, assistant
     case web(String)
     /// A custom source's feed, by source id.
     case feed(String)
@@ -149,6 +149,7 @@ final class AppModel {
         if config.launchAtLogin { SystemEvents.setLaunchAtLogin(true) }
         if config.calendarEnabled { calendar.start() }
         if config.paletteEnabled { CommandPalette.shared.register(model: self) }
+        if config.voiceHotkey { CommandPalette.shared.registerVoice() }
         configureSources()
         Task {
             await reloadData()

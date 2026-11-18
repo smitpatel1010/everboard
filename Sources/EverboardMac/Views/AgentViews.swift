@@ -17,29 +17,6 @@ struct AgentActionItems: View {
     }
 }
 
-/// Toolbar-style button with the same actions, for table rows.
-struct AgentActionsButton: View {
-    let item: FeedItem
-    private var agents: AgentCenter { .shared }
-
-    var body: some View {
-        let actions = agents.actions(for: item)
-        if !actions.isEmpty {
-            Menu {
-                ForEach(actions) { action in
-                    Button { agents.request(action, item: item) } label: { Label(action.name, systemImage: action.icon) }
-                }
-            } label: {
-                Image(systemName: "terminal")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Run an agent on this")
-        }
-    }
-}
-
 /// "Run this?" with the exact command, folder, and any problems.
 struct AgentConfirmSheet: View {
     let plan: AgentPlan

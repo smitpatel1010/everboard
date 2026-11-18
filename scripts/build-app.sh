@@ -33,10 +33,10 @@ if [ -z "$IDENTITY" ]; then
     fi
 fi
 if [ -n "$IDENTITY" ]; then
-    codesign --force --deep --options runtime --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
+    codesign --force --deep --options runtime --entitlements Resources/Everboard.entitlements --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
     echo "Signed with: $IDENTITY"
 else
-    codesign --force --deep --sign - --identifier "$BUNDLE_ID" "$APP"
+    codesign --force --deep --entitlements Resources/Everboard.entitlements --sign - --identifier "$BUNDLE_ID" "$APP"
     echo "Signed ad-hoc (no 'Everboard Local' certificate found — notifications will use in-app banners)"
 fi
 echo "Built $APP"

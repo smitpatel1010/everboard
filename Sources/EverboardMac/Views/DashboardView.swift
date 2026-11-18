@@ -29,7 +29,8 @@ struct DashboardView: View {
                             }
                             ToolbarItem {
                                 Button { model.refreshAll() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                                    .help("Refresh every account now")
+                                    .help("Refresh every account now (⌘R)")
+                                    .keyboardShortcut("r", modifiers: .command)
                             }
                         }
                 }
@@ -39,6 +40,17 @@ struct DashboardView: View {
             AIPanelSheet(panel: panel).environment(model).environment(\.refLinker, model.refLinker)
         }
         .sheet(item: Bindable(AgentCenter.shared).pending) { plan in AgentConfirmSheet(plan: plan) }
+        .sheet(item: Bindable(ItemPrompts.shared).comment) { item in
+            CommentSheet(title: "Comment on \(item.jiraKey ?? item.subtitle)") { text in
+                if let key = item.jiraKey { model.commentOnJira(key, text: text) } else { model.commentOnMR(item, text: text) }
+            }
+        }
+        .confirmationDialog("Approve \(ItemPrompts.shared.approve?.subtitle ?? "")?",
+                            isPresented: Binding(get: { ItemPrompts.shared.approve != nil }, set: { if !$0 { ItemPrompts.shared.approve = nil } }),
+                            presenting: ItemPrompts.shared.approve) { item in
+            Button("Approve") { model.approve(item) }
+        } message: { item in Text(item.title) }
+        .background { SidebarShortcuts() }
         .sheet(item: Bindable(AgentCenter.shared).presented) { p in AgentRunSheet(id: p.id) }
         .environment(\.refLinker, model.refLinker)
     }
@@ -48,6 +60,7 @@ struct DashboardView: View {
         return List(selection: $model.selection) {
             Section {
                 Label("Home", systemImage: "house").tag(SidebarItem.home)
+                Label("Assistant", systemImage: "waveform").tag(SidebarItem.assistant)
             }
             Section("Work") {
                 Label("Inbox", systemImage: "tray").badge(model.unread).tag(SidebarItem.inbox)
@@ -115,6 +128,7 @@ struct DashboardView: View {
         case .worldBrief: WorldBriefView()
         case .settings: SettingsView()
         case .agentRuns: AgentRunsView()
+        case .assistant: AssistantView()
         case .feed(let id):
             if let source = model.config.customSources.first(where: { $0.id == id }) {
                 CustomFeedView(source: source).id(source.id)
@@ -148,7 +162,8 @@ private struct SnapshotSidebar<Footer: View>: View {
         let i = model.items
         let failed = i.pipelines.filter { $0.status == "failed" && ($0.updatedAt ?? .distantPast) > Date().addingTimeInterval(-86400) }.count
         return [
-            (nil, [Row(title: "Home", icon: "house", item: .home, badge: 0)]),
+            (nil, [Row(title: "Home", icon: "house", item: .home, badge: 0),
+                   Row(title: "Assistant", icon: "waveform", item: .assistant, badge: 0)]),
             ("Work", [Row(title: "Inbox", icon: "tray", item: .inbox, badge: model.unread),
                       Row(title: model.changesTitle, icon: "arrow.triangle.pull", item: .mergeRequests, badge: i.reviewReady.count),
                       Row(title: "Pipelines", icon: "gearshape.2", item: .pipelines, badge: failed),
@@ -203,12 +218,17 @@ struct InboxView: View {
     private var model: AppModel { .shared }
     @State private var unreadOnly = false
     @State private var filter: String = "all"
+    @State private var search = ""
+    @State private var selection: String?
 
     var filtered: [AppEvent] {
         model.events.filter { e in
             (!unreadOnly || !e.read) && (filter == "all" || e.category.source == filter)
+                && (search.isEmpty || "\(e.title) \(e.body)".localizedCaseInsensitiveContains(search))
         }
     }
+
+    var selectedEvent: AppEvent? { selection.flatMap { id in model.events.first { $0.id == id } } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -219,11 +239,13 @@ struct InboxView: View {
                     Text("Jira").tag("jira")
                     Text("News").tag("news")
                     Text("Briefs").tag("brief")
+                    if !model.config.customSources.isEmpty { Text("Feeds").tag("custom") }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 380)
+                .frame(maxWidth: 420)
                 Toggle("Unread only", isOn: $unreadOnly).toggleStyle(.checkbox)
                 Spacer()
+                ListSearchField(text: $search)
                 Button("Mark all read") { model.markAllRead() }.disabled(model.unread == 0)
             }
             .padding(10)
@@ -232,18 +254,33 @@ struct InboxView: View {
                 EmptyState(icon: "tray", title: "Inbox zero",
                            message: "Pipeline failures, reportee MRs, review requests, Jira changes and major news land here.")
             } else {
-                List {
+                List(selection: $selection) {
                     ForEach(groupedByDay, id: \.0) { day, events in
                         Section(day) {
                             ForEach(events) { e in
-                                EventRow(event: e)
-                                    .onTapGesture { model.open(e) }
-                                    .contextMenu { menu(for: e) }
+                                EventRow(event: e).tag(e.id)
                             }
                         }
                     }
                 }
             }
+        }
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let e = model.events.first(where: { $0.id == id }) { menu(for: e) }
+        } primaryAction: { ids in
+            if let id = ids.first, let e = model.events.first(where: { $0.id == id }) { model.open(e) }
+        }
+        .inspector(isPresented: Binding(get: { selectedEvent != nil }, set: { if !$0 { selection = nil } })) {
+            if let e = selectedEvent {
+                if let item = model.item(withId: e.itemId) {
+                    ItemInspector(item: item) { selection = nil }
+                } else {
+                    EventInspector(event: e) { selection = nil }
+                }
+            }
+        }
+        .onChange(of: selection) {
+            if let e = selectedEvent, !e.read { model.markRead([e.id]) }
         }
         .navigationTitle("Inbox")
     }
@@ -281,5 +318,49 @@ struct InboxView: View {
         Button("Turn off “\(e.category.label)” notifications") {
             model.updateConfig { $0.notifications[e.category.rawValue] = false }
         }
+    }
+}
+
+/// Inspector for events with no live item behind them (news, briefs, items that have since closed).
+struct EventInspector: View {
+    private var model: AppModel { .shared }
+    let event: AppEvent
+    var close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(event.category.label, systemImage: "bell").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Spacer()
+                Button { close() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+            }
+            Text(event.title).font(.title3.weight(.semibold)).textSelection(.enabled)
+            Text(event.body).textSelection(.enabled)
+            Text(event.ts.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+            if event.url != nil {
+                Button { model.open(event) } label: { Label("Open", systemImage: "safari") }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .inspectorColumnWidth(min: 260, ideal: 320, max: 460)
+    }
+}
+
+/// ⌘1–⌘9 jump between the main screens.
+struct SidebarShortcuts: View {
+    private var model: AppModel { .shared }
+    static let order: [SidebarItem] = [.home, .inbox, .mergeRequests, .pipelines, .jira, .workBrief, .reports, .assistant, .agentRuns]
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(Self.order.enumerated()), id: \.offset) { i, item in
+                Button("") { model.selection = item }
+                    .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
+            }
+            Button("") { model.selection = .settings }.keyboardShortcut(",", modifiers: .command)
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
     }
 }

@@ -63,14 +63,21 @@ final class AgentCenter {
         }
     }
 
-    func run(_ plan: AgentPlan) {
+    func run(_ plan: AgentPlan) { _ = start(plan, present: true) }
+
+    /// Runs without opening the output sheet (used by the Assistant). Returns the run id.
+    func runInBackground(_ plan: AgentPlan) -> String? { start(plan, present: false) }
+
+    private func start(_ plan: AgentPlan, present: Bool) -> String? {
         pending = nil
-        guard plan.runnable else { return }
+        guard plan.runnable else { return nil }
         let execution = AgentExecution(plan: plan)
         let entry = Live(execution: execution)
         live[entry.id] = entry
-        // Let the confirm sheet finish closing before the output sheet opens; macOS drops a sheet presented mid-dismissal.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.presented = Presented(id: entry.id) }
+        if present {
+            // Let the confirm sheet finish closing before the output sheet opens; macOS drops a sheet presented mid-dismissal.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.presented = Presented(id: entry.id) }
+        }
         Log.info("agent: running \(plan.action.name) on \(plan.itemRef)")
         let store = model.store
         Task {
@@ -80,6 +87,7 @@ final class AgentCenter {
             finish(entry.id, final)
         }
         Task { await reloadHistory() }
+        return entry.id
     }
 
     private func append(_ chunk: String, to id: String) {
@@ -105,6 +113,7 @@ final class AgentCenter {
         live[id]?.record = record
         loaded[id] = record
         Log.info("agent: \(record.actionName) on \(record.itemRef) → \(record.status.rawValue)")
+        AssistantModel.shared.runFinished(record)
         if presented?.id != id {
             ToastCenter.shared.show(.init(title: "\(record.actionName): \(record.status.label)", body: record.itemRef, actionTitle: "Show",
                                           onClick: { [weak self] in self?.show(id) },

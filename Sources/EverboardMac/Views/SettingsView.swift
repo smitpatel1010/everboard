@@ -4,24 +4,88 @@ import SwiftUI
 struct SettingsView: View {
     private var model: AppModel { .shared }
 
+    struct Page: Identifiable {
+        let id: String, title: String, icon: String, tint: Color
+    }
+
+    static let groups: [(String, [Page])] = [
+        ("Connect", [Page(id: "general", title: "General", icon: "gearshape", tint: .gray),
+                     Page(id: "accounts", title: "Accounts", icon: "key", tint: .blue),
+                     Page(id: "team", title: "Team", icon: "person.3", tint: .teal),
+                     Page(id: "jira", title: "Jira", icon: "checklist", tint: .blue)]),
+        ("Work with agents", [Page(id: "agents", title: "Agents", icon: "terminal", tint: .purple),
+                              Page(id: "voice", title: "Voice", icon: "waveform", tint: .indigo),
+                              Page(id: "sources", title: "Sources", icon: "tray.and.arrow.down", tint: .orange),
+                              Page(id: "brain", title: "Brain", icon: "brain", tint: .pink)]),
+        ("Stay informed", [Page(id: "notifications", title: "Notifications", icon: "bell.badge", tint: .red),
+                           Page(id: "news", title: "News", icon: "globe", tint: .green),
+                           Page(id: "web", title: "Web panels", icon: "globe.desk", tint: .cyan)]),
+        ("AI", [Page(id: "privacy", title: "AI privacy", icon: "lock.shield", tint: .indigo),
+                Page(id: "usage", title: "AI usage", icon: "chart.bar", tint: .mint)]),
+    ]
+
+    var current: Page { Self.groups.flatMap(\.1).first { $0.id == model.settingsTab } ?? Self.groups[0].1[0] }
+
     var body: some View {
-        @Bindable var model = model
-        TabView(selection: $model.settingsTab) {
-            GeneralSettings().tabItem { Text("General") }.tag("general")
-            AccountsSettings().tabItem { Text("Accounts") }.tag("accounts")
-            TeamSettings().tabItem { Text("Team") }.tag("team")
-            JiraSettings().tabItem { Text("Jira") }.tag("jira")
-            NotificationSettings().tabItem { Text("Notifications") }.tag("notifications")
-            WebPanelSettings().tabItem { Text("Web panels") }.tag("web")
-            AgentSettings().tabItem { Text("Agents") }.tag("agents")
-            SourceSettings().tabItem { Text("Sources") }.tag("sources")
-            BrainSettingsView().tabItem { Text("Brain") }.tag("brain")
-            NewsSettings().tabItem { Text("News") }.tag("news")
-            PrivacySettings().tabItem { Text("AI privacy") }.tag("privacy")
-            UsageSettings().tabItem { Text("AI usage") }.tag("usage")
+        HStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Self.groups, id: \.0) { group, pages in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(group.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                                .padding(.horizontal, 8).padding(.bottom, 2)
+                            ForEach(pages) { page in
+                                Button { model.settingsTab = page.id } label: {
+                                    HStack(spacing: 9) {
+                                        Image(systemName: page.icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                                            .frame(width: 22, height: 22).background(page.tint.gradient, in: RoundedRectangle(cornerRadius: 6))
+                                        Text(page.title)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 8).padding(.vertical, 5)
+                                    .background(current.id == page.id ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+            }
+            .frame(width: 210)
+            .background(Color.primary.opacity(0.03))
+            Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    Image(systemName: current.icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 30, height: 30).background(current.tint.gradient, in: RoundedRectangle(cornerRadius: 8))
+                    Text(current.title).font(.title2.weight(.semibold))
+                }
+                .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 4)
+                page(current.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .padding()
         .navigationTitle("Settings")
+    }
+
+    @ViewBuilder func page(_ id: String) -> some View {
+        switch id {
+        case "accounts": AccountsSettings()
+        case "team": TeamSettings()
+        case "jira": JiraSettings()
+        case "notifications": NotificationSettings()
+        case "web": WebPanelSettings()
+        case "agents": AgentSettings()
+        case "voice": VoiceSettings()
+        case "sources": SourceSettings()
+        case "brain": BrainSettingsView()
+        case "news": NewsSettings()
+        case "privacy": PrivacySettings()
+        case "usage": UsageSettings()
+        default: GeneralSettings()
+        }
     }
 }
 

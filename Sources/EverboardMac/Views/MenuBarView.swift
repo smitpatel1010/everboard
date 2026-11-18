@@ -13,6 +13,8 @@ struct MenuBarView: View {
                     Text("\(model.unread) unread").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button { AssistantModel.shared.listenFromHotkey() } label: { Image(systemName: "mic") }
+                    .buttonStyle(.borderless).help("Talk to your agents (⌥⇧Space)")
                 Button { model.refreshAll() } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless).help("Refresh now")
                 Button { model.showDashboard(.settings) } label: { Image(systemName: "gearshape") }

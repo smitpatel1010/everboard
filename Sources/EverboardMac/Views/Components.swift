@@ -27,6 +27,17 @@ struct StatusPill: View {
     }
 }
 
+extension View {
+    /// A thin colored bar on the leading edge, so red and running items stand out while scanning a list.
+    func statusAccent(_ status: String?) -> some View {
+        padding(.leading, 8).overlay(alignment: .leading) {
+            if let status, StatusPill.color(for: status) != .orange || ["failed"].contains(status) {
+                Capsule().fill(StatusPill.color(for: status)).frame(width: 3).padding(.vertical, 2)
+            }
+        }
+    }
+}
+
 /// Small source-health indicators ("GitLab · work unreachable — VPN?").
 struct HealthChips: View {
     private var model: AppModel { .shared }
@@ -38,7 +49,8 @@ struct HealthChips: View {
                 let h = model.health[key]!
                 HStack(spacing: 4) {
                     Circle().fill(color(h)).frame(width: 7, height: 7)
-                    Text(compact ? model.sourceName(key) : h.label).font(.caption).lineLimit(1)
+                    // Healthy sources just need their name; problems carry their own message.
+                    Text(compact || h.isHealthy || h == .idle ? model.sourceName(key) : h.label).font(.caption).lineLimit(1)
                 }
                 .padding(.horizontal, 7)
                 .padding(.vertical, 3)

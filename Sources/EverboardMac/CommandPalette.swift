@@ -11,20 +11,50 @@ final class CommandPalette: NSObject, NSWindowDelegate {
 
     private var panel: PalettePanel?
     private var hotKeyRef: EventHotKeyRef?
+    private var voiceHotKeyRef: EventHotKeyRef?
+    private var handlerInstalled = false
     private var keyMonitor: Any?
     private weak var model: AppModel?
     private var state: PaletteState?
 
     // MARK: Hotkey
 
-    func register(model: AppModel) {
-        self.model = model
-        guard hotKeyRef == nil else { return }
+    /// One handler for both hotkeys: id 1 = palette (⌥Space), id 2 = talk to the assistant (⌥⇧Space).
+    private func installHandlerIfNeeded() {
+        guard !handlerInstalled else { return }
+        handlerInstalled = true
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
-            DispatchQueue.main.async { MainActor.assumeIsolated { CommandPalette.shared.toggle() } }
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
+            var hk = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &hk)
+            let which = hk.id
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if which == 2 { AssistantModel.shared.listenFromHotkey() } else { CommandPalette.shared.toggle() }
+                }
+            }
             return noErr
         }, 1, &spec, nil, nil)
+    }
+
+    func registerVoice() {
+        installHandlerIfNeeded()
+        guard voiceHotKeyRef == nil else { return }
+        let id = EventHotKeyID(signature: OSType(0x4556_4244), id: 2)
+        let status = RegisterEventHotKey(UInt32(kVK_Space), UInt32(optionKey | shiftKey), id, GetApplicationEventTarget(), 0, &voiceHotKeyRef)
+        Log.info(status == noErr ? "voice hotkey ⌥⇧Space registered" : "voice hotkey failed (\(status)) — ⌥⇧Space may be taken")
+    }
+
+    func unregisterVoice() {
+        if let voiceHotKeyRef { UnregisterEventHotKey(voiceHotKeyRef) }
+        voiceHotKeyRef = nil
+    }
+
+    func register(model: AppModel) {
+        self.model = model
+        installHandlerIfNeeded()
+        guard hotKeyRef == nil else { return }
         let id = EventHotKeyID(signature: OSType(0x4556_4244), id: 1) // "EVBD"
         let status = RegisterEventHotKey(UInt32(kVK_Space), UInt32(optionKey), id, GetApplicationEventTarget(), 0, &hotKeyRef)
         Log.info(status == noErr ? "palette hotkey ⌥Space registered" : "palette hotkey failed (\(status)) — ⌥Space may be taken")

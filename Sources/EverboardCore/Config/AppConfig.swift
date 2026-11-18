@@ -135,6 +135,14 @@ public struct AppConfig: Codable, Equatable, Sendable {
     /// Team radar: an open MR/PR older than this many days counts as aging.
     public var teamAgingDays: Double = 3
 
+    // Assistant & voice (Apple speech recognition and voices; requests are interpreted by your claude CLI).
+    /// Only recognise speech on this Mac; refuse rather than send audio to Apple's servers.
+    public var voiceOnDeviceOnly = true
+    /// Read the assistant's replies aloud.
+    public var voiceSpeakReplies = true
+    /// ⌥⇧Space opens the assistant and starts listening.
+    public var voiceHotkey = true
+
     public init() {}
 
     public static let defaultUrgent = [
@@ -247,6 +255,9 @@ public struct AppConfig: Codable, Equatable, Sendable {
         customSources = lossy(.customSources, d.customSources)
         brain = v(.brain, d.brain)
         teamAgingDays = v(.teamAgingDays, d.teamAgingDays)
+        voiceOnDeviceOnly = v(.voiceOnDeviceOnly, d.voiceOnDeviceOnly)
+        voiceSpeakReplies = v(.voiceSpeakReplies, d.voiceSpeakReplies)
+        voiceHotkey = v(.voiceHotkey, d.voiceHotkey)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -262,6 +273,7 @@ public struct AppConfig: Codable, Equatable, Sendable {
         case aiWorkEnabled, aiRedactSecrets, aiRedactEmails, aiPseudonymizePeople, aiMaskedTerms
         case aiSendDiffs, aiSendJiraText, aiSendMeetingNotes, aiLogDays
         case agentActions, repoPaths, agentRunDays, customSources, brain, teamAgingDays
+        case voiceOnDeviceOnly, voiceSpeakReplies, voiceHotkey
     }
 }
 

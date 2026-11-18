@@ -336,3 +336,35 @@ struct BrainSettingsView: View {
         .disabled(DemoData.isDemo)
     }
 }
+
+// MARK: - Voice
+
+struct VoiceSettings: View {
+    private var model: AppModel { .shared }
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("⌥⇧Space opens the Assistant and starts listening", isOn: Binding(get: { model.config.voiceHotkey }, set: { on in
+                    model.updateConfig { $0.voiceHotkey = on }
+                    if on { CommandPalette.shared.registerVoice() } else { CommandPalette.shared.unregisterVoice() }
+                }))
+                Toggle("Read replies aloud", isOn: configBinding(model, \.voiceSpeakReplies))
+            } header: {
+                Text("Talk to your agents from the Assistant screen, the mic in the menu bar, or the hotkey. Speak, then press the mic again (or pause) to send.")
+            }
+            Section {
+                Toggle("Recognise speech on this Mac only", isOn: configBinding(model, \.voiceOnDeviceOnly))
+                Text(VoiceInput.supportsOnDevice
+                     ? "This Mac supports on-device recognition: your audio never leaves it."
+                     : "This Mac can't recognise your language on-device. Turn this off to use Apple's speech service, or type instead.")
+                    .font(.caption).foregroundStyle(VoiceInput.supportsOnDevice ? Color.secondary : Color.orange)
+            } header: {
+                Text("Speech recognition")
+            } footer: {
+                Text("Voice uses Apple's built-in speech recognition and voices (Settings → General picks the voice). The text of your request then goes to your claude CLI, masked per AI privacy, to work out what to do. No other model is used.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
