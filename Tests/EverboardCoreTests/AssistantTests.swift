@@ -61,4 +61,33 @@ private final class FakeClaude: ClaudeRunning, @unchecked Sendable {
         #expect(req.prompt.contains("id=\(mr.id)") && req.prompt.contains("id=review | Deep review"))
         #expect(req.people == ["Asha K"])
     }
+
+    @Test func chatsKeepOnlyRecentMemoryAndPersist() async throws {
+        var chat = AssistantChat()
+        for i in 1...7 {
+            chat.messages.append(.init(role: .user, text: "q\(i)", spoken: i == 7))
+            chat.messages.append(.init(role: .assistant, text: "a\(i)"))
+        }
+        chat.messages.append(.init(role: .user, text: "unanswered"))
+        #expect(chat.exchanges.count == AssistantChat.memory)
+        #expect(chat.exchanges.first?.user == "q4" && chat.exchanges.last?.reply == "a7")
+
+        let prompt = AssistantPlanner.prompt("next", context: context, history: chat.exchanges)
+        #expect(!prompt.contains("q3") && prompt.contains("q4"))
+
+        #expect(AssistantChat.title(from: "  short  ") == "short")
+        #expect(AssistantChat.title(from: String(repeating: "x", count: 80)).count == 48)
+
+        let store = try Store.inMemory()
+        chat.title = "First"
+        try await store.saveChat(chat)
+        var second = AssistantChat(title: "Second", createdAt: Date().addingTimeInterval(60))
+        second.updatedAt = Date().addingTimeInterval(60)
+        try await store.saveChat(second)
+        #expect(try await store.chats().map(\.title) == ["Second", "First"])
+        #expect(try await store.chats().last?.messages.last?.text == "unanswered")
+        #expect(try await store.chats().last?.messages[12].spoken == true)
+        try await store.deleteChat(id: second.id)
+        #expect(try await store.chats().map(\.title) == ["First"])
+    }
 }

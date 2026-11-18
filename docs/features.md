@@ -18,18 +18,20 @@ Clicking the icon opens a popover with:
 
 Open it from the menu, from the Dock while it's open, by launching the app again, or with ⌥Space → "Open dashboard".
 
-**Working with lists.** Every list (MRs/PRs, pipelines, Jira, inbox, feeds) works the same way:
-- Click an item to open the **inspector** on the right: its details (branch, pipeline, approvals, reviewers, linked Jira keys, assignee…) and every action as a labeled button: open, summarize or digest, approve, retry, comment, move a Jira issue, run an agent, copy the link, mute. Recent agent runs on that item are listed there too.
-- Double-click opens the item in the browser; right-click shows the same actions as a menu.
-- The **Filter** field narrows the list by title, ref, author, key, branch or status.
-- A colored bar on the left marks red, running and done items, so they stand out while scanning.
-- ⌘1–⌘9 jump between Home, Inbox, MRs, Pipelines, Jira, Work Brief, Team & Reports, Assistant and Agent Runs; ⌘R refreshes; ⌘, opens Settings.
+**Layout.** A sidebar on the left (Home, Inbox, Assistant; Work; Team; Feeds; Personal; Agents; Settings at the bottom, with a dot per source showing its health), the page in the middle, and a **peek panel** on the right for whatever you select. ⌘\ collapses the sidebar to icons. The search box and mic at the top of the sidebar open the command palette and the Assistant.
+
+**Working with lists.** Every list (inbox, MRs/PRs, pipelines, Jira, feeds) works the same way:
+- Click a row to open it in the peek panel: its details (branch, pipeline, approvals, reviewers, linked Jira keys, assignee…) and every action as a labeled button: open, summarize or digest, approve, retry, comment, move a Jira issue, run an agent, copy the link, mute. Recent agent runs on that item are listed there too.
+- Hover a row for one-click actions (summarize or digest, retry, your first agent action, open). Double-click opens the item; right-click shows every action.
+- ↑/↓ or j/k move through the list with the peek panel following; return opens the peek panel, ⌘↩ opens the item in the browser, esc closes the panel.
+- Tabs with counts sit above the list, with toggles (Drafts, Unread, Done) and a **Filter** field on the right. Jira issues are grouped by status, team MRs by person.
+- ⌘1–⌘9 jump to Home, Inbox, Assistant, MRs, Pipelines, Jira, Work brief, Team & reports and Agent runs; ⌘R refreshes; ⌘, opens Settings.
 
 | Screen | What you see | Actions |
 |---|---|---|
-| **Assistant** | A conversation with your agents: type or talk (see below) | Ask, run agents, open screens |
+| **Assistant** | Saved chats with your agents: type or talk (see below) | Ask, run agents, open screens |
 | **Home** (opens first) | Greeting with today's summary; tiles for reviews, your MRs, failed pipelines, Jira and unread; **Needs you** (red pipelines on your MRs, reviews oldest first, unread mentions, high-priority or due Jira issues, MRs ready to merge); today's meetings; your team's stuck MRs; Jira by status; the work brief; latest activity; the news headline; how much Claude was used today. All computed locally: Home never calls Claude itself. | Click a tile to jump to its screen. Click a row to open it; right-click to summarize or digest. Join or ✨ prep a meeting. |
-| **Inbox** | Every event, grouped by day; filter by source, unread and text | Click to see it in the inspector (marks it read); double-click to open. Right-click to mark read, snooze for a day, mute the item, or turn off that notification type. |
+| **Inbox** | Every event, grouped by day; filter by source, unread and text | Click to see it in the peek panel (marks it read); double-click to open. Right-click to snooze, mute, or turn off that notification type. |
 | **Merge Requests** | Review requested / Mine / Assigned / Reportees (grouped by person) / To-dos. Draft MRs are hidden from Review requested (and from review counts on Home and the sidebar) unless you tick **Show drafts**. Rows show pipeline status, approvals, comments and linked Jira keys. "May be stuck" flags MRs open more than 3 days or red for more than 1 day. | Double-click to open. Right-click to summarize with AI, **approve** (asks first), **retry pipeline**, **comment**, or mute. To-dos: **mark done**. Click a Jira key for its AI digest. |
 | **Pipelines** | Pipelines you triggered in the last 7 days, with failures from the last 24 hours first. Filter by All / Failed / Running. | Retry, open, run an agent |
 | **Jira** | Assigned to me, plus one tab per watched filter. Done issues (resolved, or in a Done-category status such as Closed or Archive) are hidden unless you tick **Show done**, which also lists issues assigned to you that finished in the last 30 days. Home, briefs and notifications only ever use open issues. | ✨ AI digest; ➜ move the issue through its workflow or comment |
@@ -40,7 +42,7 @@ Open it from the menu, from the Dock while it's open, by launching the app again
 | **Web panels** | Any page you add, e.g. Jira dashboards, Grafana | Back, reload, open in browser |
 | **World & Tech** | Personal news brief (see below) | — |
 | **AI Activity** | Every Claude call: the exact prompt as it left your Mac (after masking), the instructions, and the reply, plus what was masked | Filter work/news, copy, clear the log |
-| **Settings** | Everything configurable, grouped in a sidebar: Connect, Work with agents (Agents, Voice, Sources, Brain), Stay informed, AI | — |
+| **Settings** | Everything configurable, in groups: Connect, Work with agents (Agents, Voice, Sources, Brain), Stay informed, AI | — |
 
 ## Notifications
 
@@ -104,19 +106,24 @@ cursor-agent -p "Review {sourceBranch} against {targetBranch}. Report only."
 
 ## Assistant and voice
 
-The **Assistant** screen (sidebar, ⌘8, the mic in the menu bar, or **⌥⇧Space** from anywhere) lets you work with your agents by talking or typing:
+The **Assistant** (sidebar, ⌘3, the mic at the top of the sidebar or in the menu bar, or **⌥⇧Space** from anywhere) lets you work with your agents by talking or typing:
 
-- "What needs me today?", "Which reviews have waited the longest?" — answered from your dashboard data.
-- "Run deep review on the payments retry MR" — picks the agent action and the item, then **asks first** with a card showing the exact command. Say "yes" or click **Run**; say "no" or **Cancel** to drop it. You hear back when the run finishes, and **Show output** opens it.
-- "Open team radar", "show pipelines", "refresh" — handled instantly, no AI call.
+- "What needs me today?", "Which reviews have waited the longest?": answered from your dashboard data.
+- "Run deep review on the payments retry MR": picks the agent action and the item, then **asks first** with a card showing the exact command. Say "yes" or click **Run**; say "no" or **Cancel** to drop it. **Show output** opens the run.
+- "Open team radar", "show pipelines", "refresh": handled instantly, with no AI call.
 - "Prep my 1:1 with Asha", "write my standup", "summarize the webhook PR", "digest PAY-1305".
+
+**Chats.** Keep as many chats as you like (⌘N for a new one); they're saved and listed beside the conversation. Each message sends Claude your dashboard snapshot plus only *that chat's* last 4 exchanges, so a long chat doesn't make prompts grow and chats never mix. If you switch chats while one is thinking, its answer still lands in the chat you asked in.
+
+**When it talks.** Voice in, voice out: a reply is read aloud only when you *said* the request. Typed requests, suggestion chips and clicked buttons get silent replies. Typing, switching chats or leaving the Assistant stops any speech. A finished agent run is announced aloud only if you started it by voice and you're not already looking at that chat; otherwise it appears in the chat (and as a banner if you're elsewhere). **Voice replies** at the top turns speech off entirely.
+
+**Listening.** Press the mic (or ⌥⇧Space) and talk; it sends after about 1.5 seconds of silence, or when you press it again. Esc cancels. If nothing is said for 8 seconds it stops.
 
 How it works, and what it uses:
 - **Speech to text** is Apple's Speech framework. With **Recognise speech on this Mac only** (on by default) audio never leaves the Mac; if your Mac can't do that for your language, Settings → Voice says so and you can allow Apple's speech service or type instead.
 - **Spoken replies** use the macOS voice chosen in Settings → General.
-- **Understanding the request** goes through your `claude` CLI like every other AI feature (`assistant.command`), masked per AI privacy and logged in AI Activity. It sees a compact list of your dashboard items, your agent action names and your team's names, and can only pick from those; anything it names that doesn't exist becomes a clarifying question instead of an action.
-- No other speech or language model is used.
-- Press the mic to start, and again to send (it also stops by itself after a pause). macOS asks for microphone and speech recognition permission the first time.
+- **Understanding the request** goes through your `claude` CLI like every other AI feature (`assistant.command`), masked per AI privacy and logged in AI Activity. It can only pick items and agent actions that exist; anything else becomes a clarifying question.
+- No other speech or language model is used. macOS asks for microphone and speech recognition permission the first time.
 
 ## Team radar and 1:1 prep
 

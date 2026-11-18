@@ -65,6 +65,9 @@ final class DashboardWindow: NSObject, NSWindowDelegate {
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                              backing: .buffered, defer: false)
             w.title = AppInfo.name
+            w.titleVisibility = .hidden
+            w.titlebarAppearsTransparent = true
+            w.isMovableByWindowBackground = false
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: DashboardView().environment(model))
             w.setFrameAutosaveName("EverboardDashboard")

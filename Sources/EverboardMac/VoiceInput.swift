@@ -20,6 +20,12 @@ final class VoiceInput {
     @ObservationIgnored private var request: SFSpeechAudioBufferRecognitionRequest?
     @ObservationIgnored private var task: SFSpeechRecognitionTask?
     @ObservationIgnored private var onFinal: ((String) -> Void)?
+    @ObservationIgnored private var lastHeard = Date()
+    @ObservationIgnored private var silenceWatch: Task<Void, Never>?
+    /// Send after this long without new words (once something was said).
+    static let pause: TimeInterval = 1.5
+    /// Give up if nothing at all is said.
+    static let noSpeechTimeout: TimeInterval = 8
 
     var isListening: Bool { state == .listening }
 
@@ -75,12 +81,24 @@ final class VoiceInput {
             return
         }
         state = .listening
+        lastHeard = Date()
+        let started = Date()
+        silenceWatch?.cancel()
+        silenceWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard let self, self.isListening else { return }
+                let quiet = Date().timeIntervalSince(self.lastHeard)
+                if !self.transcript.isEmpty && quiet >= Self.pause { self.stop(); return }
+                if self.transcript.isEmpty && Date().timeIntervalSince(started) >= Self.noSpeechTimeout { self.cancel(); return }
+            }
+        }
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             let text = result?.bestTranscription.formattedString
             let isFinal = result?.isFinal ?? false
             Task { @MainActor in
                 guard let self else { return }
-                if let text { self.transcript = text }
+                if let text, text != self.transcript { self.transcript = text; self.lastHeard = Date() }
                 if isFinal || error != nil { self.finish() }
             }
         }
@@ -88,8 +106,9 @@ final class VoiceInput {
 
     /// Stops listening and delivers what was heard.
     func stop() {
-        guard isListening else { return }
+        guard isListening, request != nil else { return }
         request?.endAudio()
+        request = nil
         // The final result arrives shortly after endAudio; finish() also runs if it never does.
         Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
@@ -104,6 +123,8 @@ final class VoiceInput {
 
     private func finish() {
         guard isListening else { return }
+        silenceWatch?.cancel()
+        silenceWatch = nil
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         task?.cancel()

@@ -84,6 +84,12 @@ public final class Store: Sendable {
             CREATE INDEX agent_runs_ts ON agent_runs(ts);
             """)
         }
+        m.registerMigration("v6-assistant-chats") { db in
+            try db.execute(sql: """
+            CREATE TABLE assistant_chats (id TEXT PRIMARY KEY, title TEXT NOT NULL, updatedAt REAL NOT NULL, json TEXT NOT NULL);
+            CREATE INDEX assistant_chats_updated ON assistant_chats(updatedAt);
+            """)
+        }
         return m
     }
 

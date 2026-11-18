@@ -113,8 +113,10 @@ final class AgentCenter {
         live[id]?.record = record
         loaded[id] = record
         Log.info("agent: \(record.actionName) on \(record.itemRef) → \(record.status.rawValue)")
+        // A run started from a chat you're looking at reports there; no banner on top of it.
+        let shownInChat = AssistantModel.shared.owns(id) && AssistantModel.shared.isLookingAtChat()
         AssistantModel.shared.runFinished(record)
-        if presented?.id != id {
+        if presented?.id != id && !shownInChat {
             ToastCenter.shared.show(.init(title: "\(record.actionName): \(record.status.label)", body: record.itemRef, actionTitle: "Show",
                                           onClick: { [weak self] in self?.show(id) },
                                           onAction: { [weak self] in self?.show(id) }), duration: 8)

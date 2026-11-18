@@ -48,7 +48,7 @@ struct HealthChips: View {
             ForEach(model.health.keys.sorted(), id: \.self) { key in
                 let h = model.health[key]!
                 HStack(spacing: 4) {
-                    Circle().fill(color(h)).frame(width: 7, height: 7)
+                    Circle().fill(Self.color(h)).frame(width: 7, height: 7)
                     // Healthy sources just need their name; problems carry their own message.
                     Text(compact || h.isHealthy || h == .idle ? model.sourceName(key) : h.label).font(.caption).lineLimit(1)
                 }
@@ -60,7 +60,7 @@ struct HealthChips: View {
         }
     }
 
-    func color(_ h: SourceHealth) -> Color {
+    static func color(_ h: SourceHealth) -> Color {
         switch h {
         case .ok: return .green
         case .idle: return .gray

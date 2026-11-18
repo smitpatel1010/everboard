@@ -163,44 +163,22 @@ struct AgentRunsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(model.config.agentActions.isEmpty ? "No agent actions yet — add one in Settings → Agents."
-                     : "\(model.config.agentActions.count) action\(model.config.agentActions.count == 1 ? "" : "s") · right-click any MR, PR, pipeline or issue to run one")
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Settings…") { model.settingsTab = "agents"; model.selection = .settings }
+            PageHeader("Agent runs", subtitle: model.config.agentActions.isEmpty ? "No agent actions yet"
+                       : "\(model.config.agentActions.count) action\(model.config.agentActions.count == 1 ? "" : "s") · run one from any item, or ask the Assistant") {
+                Button("Manage actions") { model.settingsTab = "agents"; model.selection = .settings }
                 Button("Clear history") { confirmClear = true }.disabled(agents.history.isEmpty)
             }
-            .padding(10)
-            Divider()
+            Rectangle().fill(Theme.hairline).frame(height: 1)
             if agents.history.isEmpty {
-                EmptyState(icon: "terminal", title: "No agent runs yet",
-                           message: "Agent actions run your own CLI commands, such as claude -p or cursor-agent, on an item. Output and history stay on this Mac.")
+                EmptyHint(icon: "terminal", title: "No agent runs yet",
+                          message: "Agent actions run your own CLI commands, such as claude -p or cursor-agent, on an item. Output and history stay on this Mac.",
+                          action: model.config.agentActions.isEmpty ? ("Add an agent action", { model.settingsTab = "agents"; model.selection = .settings }) : nil)
             } else {
-                List {
-                    ForEach(agents.history) { run in
-                        HStack(alignment: .top, spacing: 10) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("\(run.actionName) · \(run.itemRef)").font(.body.weight(.medium)).lineLimit(1)
-                                Text(run.itemTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            Spacer()
-                            AgentStatusBadge(run: agents.live[run.id]?.record ?? run)
-                            if run.notePath != nil { Image(systemName: "note.text").foregroundStyle(.secondary).help("Saved to your notes") }
-                            AgeText(date: run.ts)
-                        }
-                        .padding(.vertical, 3)
-                        .contentShape(Rectangle())
-                        .onTapGesture { agents.show(run.id) }
-                        .contextMenu {
-                            Button("Show output") { agents.show(run.id) }
-                            if let url = run.itemUrl { Button("Open item") { model.open(url) } }
-                            if let note = run.notePath { Button("Open note") { model.openInBrain(note) } }
-                            if agents.isRunning(run.id) { Button("Stop") { agents.cancel(run.id) } }
-                            Divider()
-                            Button("Delete", role: .destructive) { agents.delete([run.id]) }.disabled(agents.isRunning(run.id))
-                        }
+                ScrollView {
+                    LazyVStack(spacing: 1) {
+                        ForEach(agents.history) { run in RunRow(run: agents.live[run.id]?.record ?? run) }
                     }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
                 }
             }
         }
@@ -209,5 +187,43 @@ struct AgentRunsView: View {
         .confirmationDialog("Delete all agent run history?", isPresented: $confirmClear) {
             Button("Delete all", role: .destructive) { agents.clearHistory() }
         } message: { Text("Notes already saved to your brain folder are kept.") }
+    }
+}
+
+private struct RunRow: View {
+    private var agents: AgentCenter { .shared }
+    private var model: AppModel { .shared }
+    let run: AgentRun
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            StatusGlyph(status: run.status == .succeeded ? "success" : run.status == .running ? "running" : run.status == .cancelled ? "skipped" : "failed",
+                        icon: run.status == .running ? "circle.dotted" : nil)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(run.actionName).fontWeight(.medium).lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(run.itemRef).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    Text(run.itemTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            if run.notePath != nil { Image(systemName: "note.text").foregroundStyle(.secondary).help("Saved to your notes") }
+            AgentStatusBadge(run: run)
+            Text(Dates.age(run.ts)).font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 32, alignment: .trailing)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Theme.hover : .clear))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture { agents.show(run.id) }
+        .contextMenu {
+            Button("Show output") { agents.show(run.id) }
+            if let url = run.itemUrl { Button("Open item") { model.open(url) } }
+            if let note = run.notePath { Button("Open note") { model.openInBrain(note) } }
+            if agents.isRunning(run.id) { Button("Stop") { agents.cancel(run.id) } }
+            Divider()
+            Button("Delete", role: .destructive) { agents.delete([run.id]) }.disabled(agents.isRunning(run.id))
+        }
     }
 }

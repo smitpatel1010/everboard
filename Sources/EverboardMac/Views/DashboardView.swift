@@ -1,45 +1,42 @@
+import AppKit
 import EverboardCore
 import SwiftUI
 
+/// The dashboard window: a custom sidebar, the selected page, and a peek panel for whatever is selected.
 struct DashboardView: View {
     private var model: AppModel { .shared }
+    private var peek: Peek { .shared }
+    @AppStorage("sidebarCollapsed") private var collapsed = false
 
     var body: some View {
         @Bindable var model = model
-        Group {
-            if DemoData.snapshotDir != nil {
-                // Snapshot mode: the glass sidebar of NavigationSplitView can't be captured offscreen, so draw it flat.
-                HStack(spacing: 0) {
-                    SnapshotSidebar(health: healthFooter)
-                        .frame(width: 220)
-                        .background(.background.secondary)
-                    Divider()
-                    detail.frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .background(Color(nsColor: .windowBackgroundColor))
-            } else {
-                NavigationSplitView {
-                    sidebar.navigationSplitViewColumnWidth(min: 190, ideal: 210)
-                } detail: {
-                    detail
-                        .toolbar {
-                            ToolbarItem {
-                                Button { CommandPalette.shared.show() } label: { Label("Search", systemImage: "magnifyingglass") }
-                                    .help("Search everything (⌥Space)")
-                            }
-                            ToolbarItem {
-                                Button { model.refreshAll() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                                    .help("Refresh every account now (⌘R)")
-                                    .keyboardShortcut("r", modifiers: .command)
-                            }
-                        }
-                }
+        HStack(spacing: 0) {
+            Sidebar(collapsed: $collapsed)
+                .frame(width: collapsed ? 60 : 228)
+            Rectangle().fill(Theme.hairline).frame(width: 1)
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 22)
+                .background(Theme.canvas)
+            if peek.item != nil || peek.event != nil {
+                Rectangle().fill(Theme.hairline).frame(width: 1)
+                PeekPanel()
+                    .frame(width: 380)
+                    .background(Theme.surface)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+        }
+        .background(Theme.canvas)
+        .ignoresSafeArea()
+        .onChange(of: model.selection) {
+            peek.close()
+            AssistantModel.shared.stopSpeaking()
         }
         .sheet(item: $model.aiPanel) { panel in
             AIPanelSheet(panel: panel).environment(model).environment(\.refLinker, model.refLinker)
         }
         .sheet(item: Bindable(AgentCenter.shared).pending) { plan in AgentConfirmSheet(plan: plan) }
+        .sheet(item: Bindable(AgentCenter.shared).presented) { p in AgentRunSheet(id: p.id) }
         .sheet(item: Bindable(ItemPrompts.shared).comment) { item in
             CommentSheet(title: "Comment on \(item.jiraKey ?? item.subtitle)") { text in
                 if let key = item.jiraKey { model.commentOnJira(key, text: text) } else { model.commentOnMR(item, text: text) }
@@ -50,74 +47,14 @@ struct DashboardView: View {
                             presenting: ItemPrompts.shared.approve) { item in
             Button("Approve") { model.approve(item) }
         } message: { item in Text(item.title) }
-        .background { SidebarShortcuts() }
-        .sheet(item: Bindable(AgentCenter.shared).presented) { p in AgentRunSheet(id: p.id) }
+        .background { SidebarShortcuts(collapsed: $collapsed) }
         .environment(\.refLinker, model.refLinker)
-    }
-
-    private var sidebar: some View {
-        @Bindable var model = model
-        return List(selection: $model.selection) {
-            Section {
-                Label("Home", systemImage: "house").tag(SidebarItem.home)
-                Label("Assistant", systemImage: "waveform").tag(SidebarItem.assistant)
-            }
-            Section("Work") {
-                Label("Inbox", systemImage: "tray").badge(model.unread).tag(SidebarItem.inbox)
-                Label(model.changesTitle, systemImage: "arrow.triangle.pull")
-                    .badge(model.items.reviewReady.count).tag(SidebarItem.mergeRequests)
-                Label("Pipelines", systemImage: "gearshape.2")
-                    .badge(model.items.pipelines.filter { $0.status == "failed" && ($0.updatedAt ?? .distantPast) > Date().addingTimeInterval(-86400) }.count)
-                    .tag(SidebarItem.pipelines)
-                Label("Jira", systemImage: "checklist").badge(model.items.jiraAssigned.count).tag(SidebarItem.jira)
-                Label("Work Brief", systemImage: "sun.max").tag(SidebarItem.workBrief)
-                Label("Team & Reports", systemImage: "person.3").tag(SidebarItem.reports)
-            }
-            if !model.config.customSources.isEmpty {
-                Section("Feeds") {
-                    ForEach(model.config.customSources) { c in
-                        Label(c.name, systemImage: c.kind == .folder ? "folder" : "terminal")
-                            .badge(model.items.custom[c.id]?.count ?? 0).tag(SidebarItem.feed(c.id))
-                    }
-                }
-            }
-            if !model.config.webPanels.isEmpty {
-                Section("Web") {
-                    ForEach(model.config.webPanels) { p in
-                        Label(p.name, systemImage: "globe.desk").tag(SidebarItem.web(p.id))
-                    }
-                }
-            }
-            Section("Personal") {
-                Label("World & Tech", systemImage: "globe").tag(SidebarItem.worldBrief)
-            }
-            Section {
-                Label("AI Activity", systemImage: "lock.shield").tag(SidebarItem.aiActivity)
-                Label("Agent Runs", systemImage: "terminal")
-                    .badge(AgentCenter.shared.live.values.filter { $0.record.status == .running }.count).tag(SidebarItem.agentRuns)
-                Label("Settings", systemImage: "gearshape").tag(SidebarItem.settings)
-            }
-        }
-        .safeAreaInset(edge: .bottom) { healthFooter }
-    }
-
-    private var healthFooter: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(model.health.keys.sorted(), id: \.self) { key in
-                let h = model.health[key]!
-                HStack(spacing: 5) {
-                    Circle().fill(h.isHealthy ? .green : (h == .idle ? .gray : .orange)).frame(width: 7, height: 7)
-                    Text(h.isHealthy ? "\(model.sourceName(key)) · \(h.label)" : h.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder var detail: some View {
         switch model.selection {
         case .home: HomeView()
+        case .assistant: AssistantView()
         case .aiActivity: AIActivityView()
         case .inbox: InboxView()
         case .mergeRequests: MergeRequestsView()
@@ -128,200 +65,213 @@ struct DashboardView: View {
         case .worldBrief: WorldBriefView()
         case .settings: SettingsView()
         case .agentRuns: AgentRunsView()
-        case .assistant: AssistantView()
         case .feed(let id):
             if let source = model.config.customSources.first(where: { $0.id == id }) {
                 CustomFeedView(source: source).id(source.id)
             } else {
-                EmptyState(icon: "tray", title: "Source removed")
+                EmptyHint(icon: "tray", title: "Source removed")
             }
         case .web(let id):
             if let panel = model.config.webPanels.first(where: { $0.id == id }) {
                 WebPanelView(panel: panel).id(panel.id)
             } else {
-                EmptyState(icon: "globe", title: "Panel removed")
+                EmptyHint(icon: "globe", title: "Panel removed")
             }
         }
     }
 }
 
-// MARK: - Snapshot sidebar
+// MARK: - Sidebar
 
-/// `--snapshot` only: an offscreen window is never active, so the real sidebar would render dimmed.
-/// This draws the same items the way the active sidebar looks.
-private struct SnapshotSidebar<Footer: View>: View {
+struct Sidebar: View {
     private var model: AppModel { .shared }
-    let health: Footer
+    @Binding var collapsed: Bool
 
-    private struct Row: Identifiable {
-        let title: String, icon: String, item: SidebarItem, badge: Int
-        var id: String { title }
+    struct Entry: Identifiable {
+        let item: SidebarItem
+        let title: String
+        let icon: String
+        var badge: Int = 0
+        var urgent = false
+        var id: String { "\(title)|\(item)" }
     }
 
-    private var sections: [(String?, [Row])] {
+    var sections: [(String?, [Entry])] {
         let i = model.items
         let failed = i.pipelines.filter { $0.status == "failed" && ($0.updatedAt ?? .distantPast) > Date().addingTimeInterval(-86400) }.count
-        return [
-            (nil, [Row(title: "Home", icon: "house", item: .home, badge: 0),
-                   Row(title: "Assistant", icon: "waveform", item: .assistant, badge: 0)]),
-            ("Work", [Row(title: "Inbox", icon: "tray", item: .inbox, badge: model.unread),
-                      Row(title: model.changesTitle, icon: "arrow.triangle.pull", item: .mergeRequests, badge: i.reviewReady.count),
-                      Row(title: "Pipelines", icon: "gearshape.2", item: .pipelines, badge: failed),
-                      Row(title: "Jira", icon: "checklist", item: .jira, badge: i.jiraAssigned.count),
-                      Row(title: "Work Brief", icon: "sun.max", item: .workBrief, badge: 0),
-                      Row(title: "Team & Reports", icon: "person.3", item: .reports, badge: 0)]),
-            ("Feeds", model.config.customSources.map { c in
-                Row(title: c.name, icon: c.kind == .folder ? "folder" : "terminal", item: .feed(c.id), badge: i.custom[c.id]?.count ?? 0)
-            }),
-            ("Personal", [Row(title: "World & Tech", icon: "globe", item: .worldBrief, badge: 0)]),
-            (nil, [Row(title: "AI Activity", icon: "lock.shield", item: .aiActivity, badge: 0),
-                   Row(title: "Agent Runs", icon: "terminal", item: .agentRuns, badge: 0),
-                   Row(title: "Settings", icon: "gearshape", item: .settings, badge: 0)]),
-        ].filter { !$0.1.isEmpty }
+        let running = AgentCenter.shared.live.values.filter { $0.record.status == .running }.count
+        var out: [(String?, [Entry])] = [
+            (nil, [Entry(item: .home, title: "Home", icon: "square.grid.2x2"),
+                   Entry(item: .inbox, title: "Inbox", icon: "tray", badge: model.unread),
+                   Entry(item: .assistant, title: "Assistant", icon: "waveform")]),
+            ("Work", [Entry(item: .mergeRequests, title: model.changesTitle, icon: "arrow.triangle.pull", badge: i.reviewReady.count),
+                      Entry(item: .pipelines, title: "Pipelines", icon: "bolt.horizontal", badge: failed, urgent: failed > 0),
+                      Entry(item: .jira, title: "Jira", icon: "checklist", badge: i.jiraAssigned.count),
+                      Entry(item: .workBrief, title: "Work brief", icon: "sun.max")]),
+            ("Team", [Entry(item: .reports, title: "Team & reports", icon: "person.2")]),
+        ]
+        if !model.config.customSources.isEmpty {
+            out.append(("Feeds", model.config.customSources.map {
+                Entry(item: .feed($0.id), title: $0.name, icon: $0.kind == .folder ? "folder" : "terminal", badge: i.custom[$0.id]?.count ?? 0)
+            }))
+        }
+        out.append(("Personal", [Entry(item: .worldBrief, title: "World & Tech", icon: "globe")]
+            + model.config.webPanels.map { Entry(item: .web($0.id), title: $0.name, icon: "globe.desk") }))
+        out.append(("Agents", [Entry(item: .agentRuns, title: "Agent runs", icon: "terminal", badge: running),
+                               Entry(item: .aiActivity, title: "AI activity", icon: "lock.shield")]))
+        return out
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                VStack(alignment: .leading, spacing: 2) {
-                    if let header = section.0 {
-                        Text(header).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            .padding(.horizontal, 10).padding(.bottom, 2)
-                    }
-                    ForEach(section.1) { row in
-                        let selected = model.selection == row.item
-                        HStack(spacing: 8) {
-                            Image(systemName: row.icon).foregroundStyle(Color.accentColor)
-                                .frame(width: 20, alignment: .center)
-                            Text(row.title).foregroundStyle(.primary)
-                            Spacer(minLength: 4)
-                            if row.badge > 0 { Text("\(row.badge)").font(.callout).foregroundStyle(.secondary) }
+            // Room for the window's traffic lights.
+            Color.clear.frame(height: 34)
+            header
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                        VStack(alignment: .leading, spacing: 1) {
+                            if let title = section.0, !collapsed {
+                                Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 10).padding(.bottom, 3)
+                            }
+                            ForEach(section.1) { SidebarRow(entry: $0, collapsed: collapsed) }
                         }
-                        .font(.body)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(selected ? Color.primary.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 7))
                     }
                 }
-                .padding(.bottom, 14)
+                .padding(.horizontal, 10).padding(.vertical, 8)
             }
-            Spacer()
-            health
+            Spacer(minLength: 0)
+            footer
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 12)
+        .background(Theme.sidebar)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 6).fill(Theme.accentGradient).frame(width: 22, height: 22)
+                    .overlay(Image(systemName: "square.stack.3d.up.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.white))
+                if !collapsed {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(AppInfo.name).font(.system(size: 13, weight: .semibold))
+                        if let name = model.myName { Text(name).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                    }
+                    Spacer()
+                    Button { model.refreshAll() } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.borderless).foregroundStyle(.secondary).help("Refresh everything (⌘R)")
+                }
+            }
+            if collapsed {
+                Button { AssistantModel.shared.listenFromHotkey() } label: { Image(systemName: "mic.fill") }
+                    .buttonStyle(.borderless).frame(maxWidth: .infinity).help("Talk to your agents (⌥⇧Space)")
+            } else {
+                HStack(spacing: 6) {
+                    Button { CommandPalette.shared.show() } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "magnifyingglass")
+                            Text("Search").foregroundStyle(.secondary)
+                            Spacer()
+                            Text("⌥Space").font(.caption2).foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 9).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Button { AssistantModel.shared.listenFromHotkey() } label: {
+                        Image(systemName: VoiceInput.shared.isListening ? "waveform" : "mic.fill").font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white).frame(width: 28, height: 28)
+                            .background(Circle().fill(VoiceInput.shared.isListening ? AnyShapeStyle(Color.red) : AnyShapeStyle(Theme.accentGradient)))
+                    }
+                    .buttonStyle(.plain).help("Talk to your agents (⌥⇧Space)")
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.bottom, 4)
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SidebarRow(entry: Entry(item: .settings, title: "Settings", icon: "gearshape"), collapsed: collapsed)
+            HStack(spacing: 8) {
+                if !collapsed {
+                    ForEach(model.health.keys.sorted(), id: \.self) { key in
+                        let h = model.health[key]!
+                        HStack(spacing: 4) {
+                            Circle().fill(HealthChips.color(h)).frame(width: 6, height: 6)
+                            Text(model.sourceName(key)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .help("\(model.sourceName(key)): \(h.label)")
+                    }
+                }
+                Spacer(minLength: 0)
+                Button { withAnimation(.snappy) { collapsed.toggle() } } label: {
+                    Image(systemName: "sidebar.left").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless).help("Collapse the sidebar (⌘\\)")
+            }
+            .padding(.horizontal, 10)
+        }
+        .padding(.horizontal, 10).padding(.bottom, 12)
     }
 }
 
-// MARK: - Inbox
-
-struct InboxView: View {
+struct SidebarRow: View {
     private var model: AppModel { .shared }
-    @State private var unreadOnly = false
-    @State private var filter: String = "all"
-    @State private var search = ""
-    @State private var selection: String?
+    let entry: Sidebar.Entry
+    let collapsed: Bool
+    @State private var hovering = false
 
-    var filtered: [AppEvent] {
-        model.events.filter { e in
-            (!unreadOnly || !e.read) && (filter == "all" || e.category.source == filter)
-                && (search.isEmpty || "\(e.title) \(e.body)".localizedCaseInsensitiveContains(search))
+    var body: some View {
+        let selected = model.selection == entry.item
+        Button { model.selection = entry.item } label: {
+            HStack(spacing: 9) {
+                Image(systemName: entry.icon).font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Theme.accent : Color.secondary).frame(width: 18)
+                if !collapsed {
+                    Text(entry.title).font(.system(size: 13, weight: selected ? .semibold : .regular)).lineLimit(1)
+                    Spacer(minLength: 4)
+                    if entry.badge > 0 {
+                        Text("\(entry.badge)").font(.system(size: 11, weight: .medium).monospacedDigit())
+                            .foregroundStyle(entry.urgent ? Color.white : Color.secondary)
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(Capsule().fill(entry.urgent ? Color.red : Color.primary.opacity(0.07)))
+                    }
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: collapsed ? .center : .leading)
+            .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Theme.selected : hovering ? Theme.hover : .clear))
+            .overlay(alignment: .topTrailing) {
+                if collapsed && entry.badge > 0 { Circle().fill(entry.urgent ? Color.red : Theme.accent).frame(width: 6, height: 6).padding(4) }
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(collapsed ? entry.title : "")
     }
+}
 
-    var selectedEvent: AppEvent? { selection.flatMap { id in model.events.first { $0.id == id } } }
+// MARK: - Peek panel
+
+private struct PeekPanel: View {
+    private var peek: Peek { .shared }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Picker("", selection: $filter) {
-                    Text("All").tag("all")
-                    Text("Code").tag("code")
-                    Text("Jira").tag("jira")
-                    Text("News").tag("news")
-                    Text("Briefs").tag("brief")
-                    if !model.config.customSources.isEmpty { Text("Feeds").tag("custom") }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 420)
-                Toggle("Unread only", isOn: $unreadOnly).toggleStyle(.checkbox)
-                Spacer()
-                ListSearchField(text: $search)
-                Button("Mark all read") { model.markAllRead() }.disabled(model.unread == 0)
+            Color.clear.frame(height: 22)
+            if let item = peek.item {
+                ItemInspector(item: item) { peek.close() }.id(item.id)
+            } else if let event = peek.event {
+                EventInspector(event: event) { peek.close() }
             }
-            .padding(10)
-            Divider()
-            if filtered.isEmpty {
-                EmptyState(icon: "tray", title: "Inbox zero",
-                           message: "Pipeline failures, reportee MRs, review requests, Jira changes and major news land here.")
-            } else {
-                List(selection: $selection) {
-                    ForEach(groupedByDay, id: \.0) { day, events in
-                        Section(day) {
-                            ForEach(events) { e in
-                                EventRow(event: e).tag(e.id)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .contextMenu(forSelectionType: String.self) { ids in
-            if let id = ids.first, let e = model.events.first(where: { $0.id == id }) { menu(for: e) }
-        } primaryAction: { ids in
-            if let id = ids.first, let e = model.events.first(where: { $0.id == id }) { model.open(e) }
-        }
-        .inspector(isPresented: Binding(get: { selectedEvent != nil }, set: { if !$0 { selection = nil } })) {
-            if let e = selectedEvent {
-                if let item = model.item(withId: e.itemId) {
-                    ItemInspector(item: item) { selection = nil }
-                } else {
-                    EventInspector(event: e) { selection = nil }
-                }
-            }
-        }
-        .onChange(of: selection) {
-            if let e = selectedEvent, !e.read { model.markRead([e.id]) }
-        }
-        .navigationTitle("Inbox")
-    }
-
-    var groupedByDay: [(String, [AppEvent])] {
-        let cal = Calendar.current
-        var out: [(String, [AppEvent])] = []
-        for e in filtered {
-            let label = cal.isDateInToday(e.ts) ? "Today" : cal.isDateInYesterday(e.ts) ? "Yesterday"
-                : e.ts.formatted(.dateTime.weekday(.wide).day().month())
-            if out.last?.0 == label { out[out.count - 1].1.append(e) } else { out.append((label, [e])) }
-        }
-        return out
-    }
-
-    @ViewBuilder func menu(for e: AppEvent) -> some View {
-        Button("Open") { model.open(e) }
-        Button(e.read ? "Already read" : "Mark read") { model.markRead([e.id]) }.disabled(e.read)
-        if e.category == .reporteeNewMR || e.category == .todoReview, let item = model.item(withId: e.itemId) {
-            Button("Summarize with AI") { model.summarize(item) }
-        }
-        if let key = Notifier.jiraKey(in: e), e.category.source == "jira" {
-            Button("AI digest of \(key)") { model.digest(jiraKey: key, url: e.url) }
-        }
-        if let item = model.item(withId: e.itemId) { AgentActionItems(item: item) }
-        Divider()
-        if let itemId = e.itemId {
-            if model.config.isMuted(itemId) {
-                Button("Unmute this item") { model.unmute(itemId: itemId) }
-            } else {
-                Button("Snooze this item for a day") { model.mute(itemId: itemId, for: 86400) }
-                Button("Mute this item") { model.mute(itemId: itemId, for: nil) }
-            }
-        }
-        Button("Turn off “\(e.category.label)” notifications") {
-            model.updateConfig { $0.notifications[e.category.rawValue] = false }
         }
     }
 }
 
-/// Inspector for events with no live item behind them (news, briefs, items that have since closed).
+/// Peek content for events with no live item behind them (news, briefs, items that have since closed).
 struct EventInspector: View {
     private var model: AppModel { .shared }
     let event: AppEvent
@@ -338,19 +288,20 @@ struct EventInspector: View {
             Text(event.body).textSelection(.enabled)
             Text(event.ts.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
             if event.url != nil {
-                Button { model.open(event) } label: { Label("Open", systemImage: "safari") }
+                Button { model.open(event) } label: { Label("Open", systemImage: "arrow.up.right") }
+                    .buttonStyle(.borderedProminent).tint(Theme.accent)
             }
             Spacer()
         }
-        .padding(14)
-        .inspectorColumnWidth(min: 260, ideal: 320, max: 460)
+        .padding(16)
     }
 }
 
-/// ⌘1–⌘9 jump between the main screens.
+/// ⌘1–⌘9 jump between screens, ⌘, opens Settings, ⌘\ collapses the sidebar, ⌘R refreshes.
 struct SidebarShortcuts: View {
     private var model: AppModel { .shared }
-    static let order: [SidebarItem] = [.home, .inbox, .mergeRequests, .pipelines, .jira, .workBrief, .reports, .assistant, .agentRuns]
+    @Binding var collapsed: Bool
+    static let order: [SidebarItem] = [.home, .inbox, .assistant, .mergeRequests, .pipelines, .jira, .workBrief, .reports, .agentRuns]
 
     var body: some View {
         ZStack {
@@ -359,6 +310,8 @@ struct SidebarShortcuts: View {
                     .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
             }
             Button("") { model.selection = .settings }.keyboardShortcut(",", modifiers: .command)
+            Button("") { withAnimation(.snappy) { collapsed.toggle() } }.keyboardShortcut("\\", modifiers: .command)
+            Button("") { model.refreshAll() }.keyboardShortcut("r", modifiers: .command)
         }
         .opacity(0)
         .allowsHitTesting(false)

@@ -43,7 +43,7 @@ struct SettingsView: View {
                                         Spacer()
                                     }
                                     .padding(.horizontal, 8).padding(.vertical, 5)
-                                    .background(current.id == page.id ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                                    .background(current.id == page.id ? Theme.selected : .clear, in: RoundedRectangle(cornerRadius: 8))
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
@@ -54,8 +54,8 @@ struct SettingsView: View {
                 .padding(12)
             }
             .frame(width: 210)
-            .background(Color.primary.opacity(0.03))
-            Divider()
+            .background(Theme.surface.opacity(0.5))
+            Rectangle().fill(Theme.hairline).frame(width: 1)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 10) {
                     Image(systemName: current.icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
@@ -64,6 +64,7 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 4)
                 page(current.id)
+                    .scrollContentBackground(.hidden)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

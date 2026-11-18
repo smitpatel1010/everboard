@@ -92,7 +92,6 @@ struct ItemInspector: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .inspectorColumnWidth(min: 260, ideal: 320, max: 460)
         .task(id: item.id) {
             transitions = []
             if let key = item.jiraKey { transitions = await model.jiraTransitions(key) }
@@ -257,24 +256,6 @@ struct ItemInspector: View {
     }
 }
 
-extension View {
-    /// Shows `ItemInspector` for `item` beside the list; closing it clears the selection.
-    func itemInspector(_ item: FeedItem?, clear: @escaping () -> Void) -> some View {
-        inspector(isPresented: Binding(get: { item != nil }, set: { if !$0 { clear() } })) {
-            if let item { ItemInspector(item: item, close: clear) } else { EmptyView() }
-        }
-    }
-
-    /// Standard list behaviour for items: right-click menu and double-click to open.
-    func itemContextMenu(_ lookup: @escaping (String) -> FeedItem?) -> some View {
-        contextMenu(forSelectionType: String.self) { ids in
-            if let id = ids.first, let item = lookup(id) { ItemMenu(item: item) }
-        } primaryAction: { ids in
-            if let id = ids.first, let item = lookup(id) { AppModel.shared.openItem(item) }
-        }
-    }
-}
-
 /// Search field for list headers.
 struct ListSearchField: View {
     @Binding var text: String
@@ -290,6 +271,6 @@ struct ListSearchField: View {
         }
         .padding(.horizontal, 7).padding(.vertical, 4)
         .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
-        .frame(width: 220)
+        .frame(width: 200)
     }
 }

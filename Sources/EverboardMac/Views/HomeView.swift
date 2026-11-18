@@ -20,7 +20,7 @@ struct HomeView: View {
             .frame(maxWidth: 1280)
             .frame(maxWidth: .infinity)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Theme.canvas)
         .navigationTitle("Home")
     }
 
@@ -68,7 +68,7 @@ private struct HomeCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color(nsColor: .separatorColor).opacity(0.6)))
         .shadow(color: .black.opacity(0.04), radius: 6, y: 2)
     }
@@ -235,7 +235,7 @@ private struct KPITile: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(hover ? tint.opacity(0.6) : Color(nsColor: .separatorColor).opacity(0.6)))
             .shadow(color: .black.opacity(hover ? 0.08 : 0.04), radius: hover ? 10 : 6, y: 2)
             .contentShape(Rectangle())

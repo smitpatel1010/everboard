@@ -1,31 +1,30 @@
+import AppKit
 import EverboardCore
 import Foundation
 import Observation
 
-/// The Assistant conversation: type or talk, it works out the action, asks before running agents, and does it.
+/// The Assistant: saved chats, each turning requests into dashboard actions. Agent runs are confirmed first.
+///
+/// Voice rules: a reply is spoken only when the request was spoken (voice in, voice out). Typing, clicking
+/// or switching screens stops any speech. A finished run is announced aloud only if it was started by voice
+/// and you're not already looking at the chat.
 @MainActor @Observable
 final class AssistantModel {
     static let shared = AssistantModel()
 
-    struct Message: Identifiable, Equatable {
-        enum Role { case user, assistant }
-        let id = UUID()
-        var role: Role
-        var text: String
-        /// An agent run this message is about (shows its live status and output button).
-        var runID: String?
-        /// A run waiting for "yes" / the Run button.
-        var pending: AgentPlan?
-        var isError = false
-
-        static func == (a: Message, b: Message) -> Bool {
-            a.id == b.id && a.text == b.text && a.runID == b.runID && (a.pending?.id == b.pending?.id) && a.isError == b.isError
-        }
+    var chats: [AssistantChat] = []
+    var currentID: String?
+    /// The chat waiting on Claude, if any.
+    var thinkingChat: String?
+    var thinking: Bool { thinkingChat != nil && thinkingChat == currentID }
+    var draft = "" {
+        didSet { if !draft.isEmpty, Speech.shared.speakingID == "assistant" { Speech.shared.stop() } }
     }
-
-    var messages: [Message] = []
-    var thinking = false
-    var draft = ""
+    /// Agent runs waiting for "yes" / Run, by message id. Not saved: a confirmation shouldn't outlive the session.
+    var pending: [String: AgentPlan] = [:]
+    /// Run id → whether it was confirmed by voice.
+    @ObservationIgnored private var runVoice: [String: Bool] = [:]
+    @ObservationIgnored private var loaded = false
 
     private var model: AppModel { .shared }
     private var voice: VoiceInput { .shared }
@@ -37,154 +36,226 @@ final class AssistantModel {
         "Open team radar",
     ]
 
+    var current: AssistantChat? { chats.first { $0.id == currentID } }
+    var messages: [AssistantChat.Message] { current?.messages ?? [] }
+
+    // MARK: Chats
+
+    func load() async {
+        guard !loaded else { return }
+        loaded = true
+        chats = (try? await model.store.chats()) ?? []
+        if currentID == nil { currentID = chats.first?.id }
+    }
+
+    func newChat() {
+        stopSpeaking()
+        // Reuse an untouched empty chat instead of piling up blanks.
+        if let empty = chats.first(where: { $0.messages.isEmpty }) { currentID = empty.id; return }
+        let chat = AssistantChat()
+        chats.insert(chat, at: 0)
+        currentID = chat.id
+    }
+
+    func select(_ id: String) {
+        stopSpeaking()
+        currentID = id
+    }
+
+    func delete(_ id: String) {
+        chats.removeAll { $0.id == id }
+        if currentID == id { currentID = chats.first?.id }
+        Task { try? await model.store.deleteChat(id: id) }
+    }
+
+    private func append(_ m: AssistantChat.Message, to chatID: String? = nil) {
+        if let chatID, chatID != currentID { return append(m, toChat: chatID) }
+        if current == nil { newChat() }
+        guard let i = chats.firstIndex(where: { $0.id == currentID }) else { return }
+        chats[i].messages.append(m)
+        chats[i].updatedAt = Date()
+        if m.role == .user, chats[i].messages.filter({ $0.role == .user }).count == 1 { chats[i].title = AssistantChat.title(from: m.text) }
+        let chat = chats[i]
+        // Most recent chat first.
+        if i != 0 { chats.remove(at: i); chats.insert(chat, at: 0) }
+        Task { try? await model.store.saveChat(chat) }
+    }
+
+    /// Adds a message to a specific chat (a run can finish after you've switched chats).
+    private func append(_ m: AssistantChat.Message, toChat id: String) {
+        guard let i = chats.firstIndex(where: { $0.id == id }) else { return }
+        chats[i].messages.append(m)
+        chats[i].updatedAt = Date()
+        let chat = chats[i]
+        Task { try? await model.store.saveChat(chat) }
+    }
+
     // MARK: Input
 
     func submitDraft() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         draft = ""
-        if !text.isEmpty { handle(text) }
+        if !text.isEmpty { handle(text, spoken: false) }
     }
 
     func toggleListening() {
         if voice.isListening { voice.stop(); return }
         voice.clearProblem()
-        Speech.shared.stop()
+        stopSpeaking()
         Task { await voice.start(onDeviceOnly: model.config.voiceOnDeviceOnly) { [weak self] text in self?.handle(text, spoken: true) } }
     }
 
-    /// From the global hotkey: show the assistant and start listening.
+    /// From the hotkey or a mic button outside the Assistant: show it and start (or stop) listening.
     func listenFromHotkey() {
         model.showDashboard(.assistant)
-        if !voice.isListening { toggleListening() }
+        toggleListening()
     }
 
     // MARK: Handling
 
-    func handle(_ text: String, spoken: Bool = false) {
-        messages.append(Message(role: .user, text: text))
-        // A "yes" / "no" answers the pending confirmation, if there is one.
-        if let i = messages.lastIndex(where: { $0.pending != nil }), let answer = AssistantPlanner.confirmation(text) {
-            if answer { confirm(messages[i].id) } else { decline(messages[i].id) }
+    func handle(_ text: String, spoken: Bool) {
+        stopSpeaking()
+        append(.init(role: .user, text: text, spoken: spoken))
+        // A "yes" / "no" answers the latest pending confirmation in this chat.
+        if let m = messages.last(where: { pending[$0.id] != nil }), let answer = AssistantPlanner.confirmation(text) {
+            if answer { confirm(m.id, spoken: spoken) } else { decline(m.id, spoken: spoken) }
             return
         }
         guard model.config.aiWorkEnabled || AssistantPlanner.localIntent(text) != nil else {
-            reply("Work features are off in Settings → AI privacy, so I can only open screens and refresh.", error: true)
+            reply("Work features are off in Settings → AI privacy, so I can only open screens and refresh.", spoken: spoken, error: true)
             return
         }
-        thinking = true
         let context = AssistantContext(items: model.allItems, actions: model.config.agentActions,
                                        people: model.config.reportees.compactMap { $0.name ?? $0.username },
                                        screens: AssistantPlanner.screens)
-        let history = conversationPairs()
+        // Only this chat's last few exchanges go along, never the whole history.
+        let history = current?.exchanges ?? []
         let planner = AssistantPlanner(claude: model.claude)
+        let chatID = currentID
+        thinkingChat = chatID
         Task {
-            defer { thinking = false }
+            defer { if thinkingChat == chatID { thinkingChat = nil } }
             do {
                 let intent = try await planner.plan(text, context: context, history: history)
-                perform(intent)
+                // If you moved to another chat meanwhile, the answer still lands in the chat you asked in,
+                // but nothing happens on screen behind your back.
+                if chatID == currentID { perform(intent, spoken: spoken) } else { deliverLate(intent, to: chatID) }
             } catch {
-                reply(error.localizedDescription, error: true)
+                reply(error.localizedDescription, spoken: spoken, error: true, to: chatID)
             }
         }
     }
 
-    private func perform(_ intent: AssistantIntent) {
+    private func perform(_ intent: AssistantIntent, spoken: Bool) {
         let item = intent.item.flatMap { id in model.allItems.first { $0.id == id } }
         switch intent.action {
         case .runAgent:
-            guard let item, let action = model.config.agentActions.first(where: { $0.id == intent.agent }) else { return reply(intent.reply) }
+            guard let item, let action = model.config.agentActions.first(where: { $0.id == intent.agent }) else {
+                return reply(intent.reply, spoken: spoken)
+            }
             let plan = AgentCenter.shared.plan(action, item: item)
             if !plan.runnable {
-                return reply("I can't run \(action.name) on \(plan.itemRef): " + plan.problems.joined(separator: "; ") + ".", error: true)
+                return reply("I can't run \(action.name) on \(plan.itemRef): " + plan.problems.joined(separator: "; ") + ".", spoken: spoken, error: true)
             }
-            var m = Message(role: .assistant, text: "Run \(action.name) on \(plan.itemRef)? Say yes, or use the button.")
-            m.pending = plan
-            messages.append(m)
-            speak(m.text)
+            let m = AssistantChat.Message(role: .assistant, text: "Run \(action.name) on \(plan.itemRef)?" + (spoken ? " Say yes, or use the button." : ""))
+            pending[m.id] = plan
+            append(m)
+            if spoken { speak(m.text) }
         case .open:
             if let item { model.openItem(item) }
-            reply(intent.reply)
+            reply(intent.reply, spoken: spoken)
         case .summarize:
             if let item { model.summarize(item) }
-            reply(intent.reply)
+            reply(intent.reply, spoken: spoken)
         case .digest:
             if let item, let key = item.jiraKey ?? item["jiraKeys"]?.split(separator: ",").first.map(String.init) {
                 model.digest(jiraKey: key, title: item.title, url: item.url)
             }
-            reply(intent.reply)
+            reply(intent.reply, spoken: spoken)
         case .show:
             show(intent.screen ?? "home")
-            reply(intent.reply)
+            reply(intent.reply, spoken: spoken)
         case .workBrief:
-            model.selection = .workBrief
             model.generateWorkBrief()
-            reply(intent.reply)
+            reply(intent.reply + " It'll be on the Work brief page.", spoken: spoken)
         case .standup:
-            model.reportsTab = "standup"
-            model.selection = .reports
             model.generateStandup()
-            reply(intent.reply)
+            reply(intent.reply + " It'll be under Team & reports → Daily standup.", spoken: spoken)
         case .oneOnOne:
             if let r = model.config.reportees.first(where: { ($0.name ?? $0.username ?? "").caseInsensitiveCompare(intent.person ?? "") == .orderedSame }) {
-                OneOnOneView.selected = r.id
-                model.reportsTab = "oneonone"
-                model.selection = .reports
                 TeamDesk.shared.generatePrep(r)
             }
-            reply(intent.reply)
+            reply(intent.reply + " It'll be under Team & reports → 1:1 prep.", spoken: spoken)
         case .refresh:
             model.refreshAll()
-            reply(intent.reply)
+            reply(intent.reply, spoken: spoken)
         case .answer:
-            reply(intent.reply)
+            reply(intent.reply, spoken: spoken)
         }
     }
 
-    func confirm(_ messageID: UUID) {
-        guard let i = messages.firstIndex(where: { $0.id == messageID }), let plan = messages[i].pending else { return }
-        messages[i].pending = nil
-        let id = AgentCenter.shared.runInBackground(plan)
-        var m = Message(role: .assistant, text: "Running \(plan.action.name) on \(plan.itemRef). I'll tell you when it's done.")
-        m.runID = id
-        messages.append(m)
-        speak(m.text)
+    /// An answer for a chat you've left: keep run confirmations and replies, skip screen changes.
+    private func deliverLate(_ intent: AssistantIntent, to chatID: String?) {
+        guard let chatID else { return }
+        if intent.action == .runAgent, let item = intent.item.flatMap({ id in model.allItems.first { $0.id == id } }),
+           let action = model.config.agentActions.first(where: { $0.id == intent.agent }) {
+            let plan = AgentCenter.shared.plan(action, item: item)
+            let m = AssistantChat.Message(role: .assistant, text: "Run \(action.name) on \(plan.itemRef)?")
+            if plan.runnable { pending[m.id] = plan }
+            append(m, toChat: chatID)
+        } else {
+            append(.init(role: .assistant, text: intent.reply), toChat: chatID)
+        }
     }
 
-    func decline(_ messageID: UUID) {
-        guard let i = messages.firstIndex(where: { $0.id == messageID }) else { return }
-        messages[i].pending = nil
-        reply("Okay, not running it.")
+    func confirm(_ messageID: String, spoken: Bool = false) {
+        guard let plan = pending.removeValue(forKey: messageID), let id = AgentCenter.shared.runInBackground(plan) else { return }
+        runVoice[id] = spoken
+        append(.init(role: .assistant, text: "Running \(plan.action.name) on \(plan.itemRef).", runID: id))
+        if spoken { speak("Running \(plan.action.name). I'll tell you when it's done.") }
     }
 
-    /// Called by AgentCenter when a run started from here finishes.
+    func decline(_ messageID: String, spoken: Bool = false) {
+        guard pending.removeValue(forKey: messageID) != nil else { return }
+        reply("Okay, not running it.", spoken: spoken)
+    }
+
+    /// Whether a run was started from a chat (so its finish shows up there instead of as a banner).
+    func owns(_ runID: String) -> Bool { runVoice[runID] != nil }
+
+    /// Called by AgentCenter when a run finishes.
     func runFinished(_ run: AgentRun) {
-        guard messages.contains(where: { $0.runID == run.id }) else { return }
+        guard let byVoice = runVoice.removeValue(forKey: run.id),
+              let chat = chats.first(where: { $0.messages.contains { $0.runID == run.id } }) else { return }
         let firstLine = run.output.split(separator: "\n").first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.map(String.init) ?? ""
-        var m = Message(role: .assistant, text: "\(run.actionName) on \(run.itemRef): \(run.status.label.lowercased()). "
-                        + (firstLine.isEmpty ? "" : String(firstLine.prefix(160))))
-        m.runID = run.id
-        m.isError = run.status != .succeeded
-        messages.append(m)
-        speak("\(run.actionName) on \(run.itemRef) is \(run.status.label.lowercased()).")
+        append(.init(role: .assistant, text: "\(run.actionName) on \(run.itemRef): \(run.status.label.lowercased())."
+                     + (firstLine.isEmpty ? "" : " " + String(firstLine.prefix(160))), runID: run.id, isError: run.status != .succeeded),
+               toChat: chat.id)
+        if byVoice && !isLookingAtChat(chat.id) && model.config.voiceSpeakReplies {
+            Speech.shared.say("\(run.actionName) on \(run.itemRef) is \(run.status.label.lowercased()).",
+                              voice: model.config.speechVoice, rate: model.config.speechRate)
+        }
     }
 
-    func clear() {
-        messages = []
-        Speech.shared.stop()
+    /// True when the Assistant is on screen, showing this chat, in the active app.
+    func isLookingAtChat(_ id: String? = nil) -> Bool {
+        NSApp.isActive && model.selection == .assistant && (id == nil || id == currentID)
     }
 
     // MARK: Helpers
 
-    private func reply(_ text: String, error: Bool = false) {
-        var m = Message(role: .assistant, text: text)
-        m.isError = error
-        messages.append(m)
-        speak(text)
+    private func reply(_ text: String, spoken: Bool, error: Bool = false, to chatID: String? = nil) {
+        append(.init(role: .assistant, text: text, isError: error), to: chatID)
+        if spoken && (chatID == nil || chatID == currentID) { speak(text) }
     }
 
     private func speak(_ text: String) {
         guard model.config.voiceSpeakReplies else { return }
         Speech.shared.say(text, voice: model.config.speechVoice, rate: model.config.speechRate)
+    }
+
+    func stopSpeaking() {
+        if Speech.shared.speakingID == "assistant" { Speech.shared.stop() }
     }
 
     private func show(_ screen: String) {
@@ -202,14 +273,5 @@ final class AssistantModel {
         case "settings": model.selection = .settings
         default: model.selection = .home
         }
-    }
-
-    private func conversationPairs() -> [(user: String, reply: String)] {
-        var out: [(String, String)] = []
-        var lastUser: String?
-        for m in messages.dropLast() {
-            if m.role == .user { lastUser = m.text } else if let u = lastUser { out.append((u, m.text)); lastUser = nil }
-        }
-        return out
     }
 }

@@ -142,6 +142,7 @@ final class AppModel {
                 await reloadArticles()
                 await loadReportsAndFollows()
                 await AgentCenter.shared.reloadHistory()
+                await AssistantModel.shared.load()
                 if let dir = DemoData.snapshotDir { await DemoData.snapshot(model: self, to: dir) }
             }
             return

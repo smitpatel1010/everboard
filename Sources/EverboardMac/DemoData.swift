@@ -236,6 +236,17 @@ enum DemoData {
             itemUrl: "https://gitlab.example/mr/305", command: "claude -p \"Review the merge/pull request at https://gitlab.example/mr/305 …\"",
             workingDirectory: "~/Library/Caches/Everboard/agent-work", status: .succeeded, exitCode: 0,
             output: "Verdict: approve with nits\n\n1. TTL is hard-coded to 300s; read it from config.\n2. No test for a cache miss after eviction.\n"))
+        var chat = AssistantChat(title: "Which reviews have waited the longest?", createdAt: now.addingTimeInterval(-50 * 60))
+        chat.messages = [
+            .init(role: .user, text: "Which reviews have waited the longest?"),
+            .init(role: .assistant, text: "Cache tenant config in Redis from Priya has waited a day; the webhook sequence PR from Lena about 12 hours."),
+            .init(role: .user, text: "Run the review agent on the Redis one", spoken: true),
+            .init(role: .assistant, text: "Running Claude: review this change on acme/payments-api!305.", runID: nil),
+            .init(role: .assistant, text: "Claude: review this change on acme/payments-api!305: done. Verdict: approve with nits"),
+        ]
+        chat.updatedAt = now.addingTimeInterval(-37 * 60)
+        try await store.saveChat(chat)
+        try await store.saveChat(AssistantChat(title: "Prep my 1:1 with Asha", createdAt: now.addingTimeInterval(-26 * 3600)))
     }
 
     static func seedCalendar(_ calendar: CalendarService) {
@@ -275,6 +286,12 @@ enum DemoData {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             save(window.contentView!, to: dir.appendingPathComponent("\(name).png"))
         }
+        model.selection = .mergeRequests
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        if let first = model.items.reviewReady.first { Peek.shared.show(first) }
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        save(window.contentView!, to: dir.appendingPathComponent("peek.png"))
+        Peek.shared.close()
         for tab in ["radar", "oneonone"] {
             model.reportsTab = tab
             model.selection = .reports

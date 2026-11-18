@@ -155,7 +155,7 @@ public struct AssistantPlanner: Sendable {
         let items = context.items.prefix(120).map(line).joined(separator: "\n")
         let actions = context.actions.map { "- id=\($0.id) | \($0.name) | on \($0.targets.map(\.rawValue).joined(separator: ","))" }
             .joined(separator: "\n")
-        let convo = history.suffix(4).map { "User: \($0.user)\nAssistant: \($0.reply)" }.joined(separator: "\n")
+        let convo = history.suffix(AssistantChat.memory).map { "User: \($0.user)\nAssistant: \($0.reply)" }.joined(separator: "\n")
         return """
         Now: \(context.now.formatted(date: .abbreviated, time: .shortened))
 
@@ -178,5 +178,85 @@ public struct AssistantPlanner: Sendable {
         if ["yes", "yeah", "yep", "sure", "ok", "okay", "go", "go ahead", "do it", "run it", "run", "confirm", "yes please"].contains(t) { return true }
         if ["no", "nope", "cancel", "stop", "don't", "never mind", "nevermind"].contains(t) { return false }
         return nil
+    }
+}
+
+/// One saved Assistant conversation. Each request only sends the last few exchanges of its own chat,
+/// so a long chat doesn't make prompts grow, and separate chats never mix.
+public struct AssistantChat: Codable, Sendable, Identifiable, Equatable {
+    public struct Message: Codable, Sendable, Identifiable, Equatable {
+        public enum Role: String, Codable, Sendable { case user, assistant }
+        public var id: String
+        public var role: Role
+        public var text: String
+        /// Agent run this message is about.
+        public var runID: String?
+        public var isError: Bool
+        /// Whether the user said it (rather than typed it); voice replies only answer voice.
+        public var spoken: Bool
+
+        public init(id: String = UUID().uuidString, role: Role, text: String, runID: String? = nil, isError: Bool = false, spoken: Bool = false) {
+            self.id = id
+            self.role = role
+            self.text = text
+            self.runID = runID
+            self.isError = isError
+            self.spoken = spoken
+        }
+    }
+
+    public var id: String
+    public var title: String
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var messages: [Message]
+
+    public init(id: String = UUID().uuidString, title: String = "New chat", createdAt: Date = Date(), messages: [Message] = []) {
+        self.id = id
+        self.title = title
+        self.createdAt = createdAt
+        updatedAt = createdAt
+        self.messages = messages
+    }
+
+    /// How many past exchanges go along with each request.
+    public static let memory = 4
+
+    /// (request, reply) pairs, oldest first, for the planner.
+    public var exchanges: [(user: String, reply: String)] {
+        var out: [(String, String)] = []
+        var pending: String?
+        for m in messages {
+            if m.role == .user { pending = m.text } else if let u = pending { out.append((u, m.text)); pending = nil }
+        }
+        return Array(out.suffix(Self.memory))
+    }
+
+    /// A short title from the first request.
+    public static func title(from text: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.count <= 48 ? t : String(t.prefix(47)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+}
+
+extension Store {
+    public func saveChat(_ chat: AssistantChat) async throws {
+        let json = String(decoding: try JSONEncoder.everboard.encode(chat), as: UTF8.self)
+        try await db.write { db in
+            try db.execute(sql: "INSERT OR REPLACE INTO assistant_chats (id, title, updatedAt, json) VALUES (?, ?, ?, ?)",
+                           arguments: [chat.id, chat.title, chat.updatedAt.timeIntervalSince1970, json])
+        }
+    }
+
+    /// Newest first.
+    public func chats(limit: Int = 100) async throws -> [AssistantChat] {
+        try await db.read { db in
+            try String.fetchAll(db, sql: "SELECT json FROM assistant_chats ORDER BY updatedAt DESC LIMIT ?", arguments: [limit])
+                .compactMap { try? JSONDecoder.everboard.decode(AssistantChat.self, from: Data($0.utf8)) }
+        }
+    }
+
+    public func deleteChat(id: String) async throws {
+        try await db.write { db in try db.execute(sql: "DELETE FROM assistant_chats WHERE id = ?", arguments: [id]) }
     }
 }

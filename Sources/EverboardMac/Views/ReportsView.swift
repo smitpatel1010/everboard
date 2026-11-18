@@ -8,23 +8,16 @@ struct ReportsView: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
-            HStack {
-                Picker("", selection: $model.reportsTab) {
-                    Text("Radar").tag("radar")
-                    Text("Team health").tag("team")
-                    Text("1:1 prep").tag("oneonone")
-                    Text("Daily standup").tag("standup")
-                    Text("Weekly report").tag("weekly")
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 560)
-                Spacer()
+            PageHeader("Team & reports", subtitle: "\(model.config.reportees.count) people · drafts for you, never sent")
+            Toolbar {
+                TabBar(tabs: [.init(id: "radar", title: "Radar"), .init(id: "team", title: "Health"), .init(id: "oneonone", title: "1:1 prep"),
+                              .init(id: "standup", title: "Standup"), .init(id: "weekly", title: "Weekly report")],
+                       selection: $model.reportsTab)
+            } trailing: {
                 if let err = model.reportError {
                     Label(err, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red).lineLimit(1)
                 }
             }
-            .padding(10)
-            Divider()
             switch model.reportsTab {
             case "radar": TeamRadarView()
             case "oneonone": OneOnOneView()
