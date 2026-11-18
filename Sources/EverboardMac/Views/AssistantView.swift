@@ -7,12 +7,17 @@ struct AssistantView: View {
     private var assistant: AssistantModel { .shared }
 
     var body: some View {
-        HStack(spacing: 0) {
-            ChatList()
-                .frame(width: 230)
-                .background(Theme.surface.opacity(0.5))
-            Rectangle().fill(Theme.hairline).frame(width: 1)
-            ChatPane()
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                // The chat list folds into a menu in the header when the window is narrow.
+                if geo.size.width >= 720 {
+                    ChatList()
+                        .frame(width: 230)
+                        .background(Theme.surface.opacity(0.5))
+                    Rectangle().fill(Theme.hairline).frame(width: 1)
+                }
+                ChatPane(showChatMenu: geo.size.width < 720)
+            }
         }
         .task { await assistant.load() }
     }
@@ -71,11 +76,20 @@ private struct ChatPane: View {
     private var model: AppModel { .shared }
     private var assistant: AssistantModel { .shared }
     private var voice: VoiceInput { .shared }
+    var showChatMenu = false
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(assistant.current.map { $0.messages.isEmpty ? "Assistant" : $0.title } ?? "Assistant", subtitle: subtitle) {
+                if showChatMenu {
+                    Menu {
+                        Button("New chat") { assistant.newChat() }
+                        Divider()
+                        ForEach(assistant.chats) { c in Button(c.messages.isEmpty ? "New chat" : c.title) { assistant.select(c.id) } }
+                    } label: { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
+                    .fixedSize()
+                }
                 Toggle(isOn: configBinding(model, \.voiceSpeakReplies)) { Label("Voice replies", systemImage: "speaker.wave.2") }
                     .toggleStyle(.button).help("Speak replies to spoken requests")
             }

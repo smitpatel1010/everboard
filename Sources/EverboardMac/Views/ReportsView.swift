@@ -114,7 +114,8 @@ private struct TeamHealthView: View {
             } else if let health = model.teamHealth, !health.people.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
+                        // Wide tables scroll sideways rather than widening the window.
+                        ScrollView(.horizontal, showsIndicators: false) { Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
                             GridRow {
                                 ForEach(["Person", "Merged", "Median cycle", "Median size", "Open", "Oldest open", "Red open", "Reviews given"], id: \.self) {
                                     Text($0).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -133,7 +134,7 @@ private struct TeamHealthView: View {
                                     Text("\(p.reviewsGiven)").monospacedDigit()
                                 }
                             }
-                        }
+                        } }
                         Text("Orange = worth a look: cycle > 3 days, changes > 30 files, open > 5 days, or red pipelines. Numbers can't see vacations or design work — use them to start conversations.")
                             .font(.caption).foregroundStyle(.tertiary)
                         if let c = health.commentary {

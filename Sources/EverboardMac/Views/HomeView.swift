@@ -11,9 +11,16 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HomeHeader()
                 KPIRow()
-                HStack(alignment: .top, spacing: 18) {
-                    mainColumn.frame(minWidth: 380, maxWidth: .infinity)
-                    sideColumn.frame(width: 330)
+                // Two columns when there's room, one below the other when the window is narrow.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 18) {
+                        mainColumn.frame(minWidth: 380, maxWidth: .infinity)
+                        sideColumn.frame(width: 330)
+                    }
+                    VStack(spacing: 18) {
+                        mainColumn
+                        sideColumn
+                    }
                 }
             }
             .padding(22)

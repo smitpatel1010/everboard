@@ -144,6 +144,7 @@ final class AppModel {
                 await AgentCenter.shared.reloadHistory()
                 await AssistantModel.shared.load()
                 if let dir = DemoData.snapshotDir { await DemoData.snapshot(model: self, to: dir) }
+                if CommandLine.arguments.contains("--resize-test") { await DemoData.resizeTest(model: self) }
             }
             return
         }

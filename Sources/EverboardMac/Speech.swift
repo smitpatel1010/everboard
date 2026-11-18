@@ -1,3 +1,4 @@
+import EverboardCore
 import AVFoundation
 import Observation
 
@@ -64,6 +65,11 @@ final class Speech: NSObject, AVSpeechSynthesizerDelegate {
         for raw in markdown.components(separatedBy: .newlines) {
             var l = raw.trimmingCharacters(in: .whitespaces)
             if l.isEmpty { continue }
+            // Table rows read as a sentence; the |---| divider is skipped.
+            if let cells = MarkdownTable.cells(l) {
+                if MarkdownTable.isSeparator(cells) { continue }
+                l = cells.filter { !$0.isEmpty }.joined(separator: ", ") + "."
+            }
             if l.hasPrefix("#") { l = l.trimmingCharacters(in: CharacterSet(charactersIn: "# ")) + "." }
             l = l.replacingOccurrences(of: #"^[-*•]\s+"#, with: "", options: .regularExpression)
             l = l.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]+\)"#, with: "$1", options: .regularExpression)

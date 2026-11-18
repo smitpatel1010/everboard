@@ -32,7 +32,8 @@ struct TeamRadarView: View {
             } else if let radar = desk.radar {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
+                        // Wide tables scroll sideways rather than widening the window.
+                        ScrollView(.horizontal, showsIndicators: false) { Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
                             GridRow {
                                 ForEach(["Person", "Open", "Reviewing", "Waiting for review", "Aging", "Red", "Jira moved", ""], id: \.self) {
                                     Text($0).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -63,7 +64,7 @@ struct TeamRadarView: View {
                                     }
                                 }
                             }
-                        }
+                        } }
                         Text("Orange = worth a look: red pipelines, open longer than the aging threshold, ready MRs/PRs waiting over a day without approval, or 5+ reviews queued. Jira movement only covers issues in your assigned list and filters.")
                             .font(.caption).foregroundStyle(.tertiary)
                         if let text = desk.digest() {

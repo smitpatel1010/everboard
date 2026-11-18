@@ -27,15 +27,26 @@ struct AIActivityView: View {
                 EmptyState(icon: "lock.shield", title: "Nothing sent yet",
                            message: "When a brief, summary or report runs, the exact text sent to Claude shows up here.")
             } else {
-                HSplitView {
-                    List(filtered, selection: $selection) { e in
-                        LogRow(entry: e).tag(e.id)
+                // A plain two-column layout: an AppKit split view loops on constraints when the window resizes.
+                HStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(spacing: 1) {
+                            ForEach(filtered) { e in
+                                LogRow(entry: e)
+                                    .padding(.horizontal, 10).padding(.vertical, 7)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(selection == e.id ? Theme.selected : .clear))
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { selection = e.id }
+                            }
+                        }
+                        .padding(8)
                     }
-                    .frame(minWidth: 260, idealWidth: 300, maxWidth: 380)
+                    .frame(width: 300)
+                    Rectangle().fill(Theme.hairline).frame(width: 1)
                     Group {
                         if let detail { LogDetail(entry: detail) } else { EmptyState(icon: "doc.text.magnifyingglass", title: "Select a call") }
                     }
-                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }

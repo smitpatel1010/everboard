@@ -110,6 +110,8 @@ struct MarkdownView: View {
                     inline(s)
                 case .rule:
                     Divider()
+                case .table(let header, let rows):
+                    MarkdownTableView(header: header, rows: rows, inline: inline).padding(.vertical, 4)
                 }
             }
         }
@@ -122,13 +124,22 @@ struct MarkdownView: View {
         })
     }
 
-    enum Block { case heading(Int, String), bullet(String, Int), numbered(String, String), paragraph(String), rule }
+    enum Block { case heading(Int, String), bullet(String, Int), numbered(String, String), paragraph(String), rule, table([String]?, [[String]]) }
 
     var blocks: [Block] {
         var out: [Block] = []
-        for raw in linker.linkify(text).components(separatedBy: .newlines) {
+        let lines = linker.linkify(text).components(separatedBy: .newlines)
+        var i = 0
+        while i < lines.count {
+            let raw = lines[i]
             let line = raw.trimmingCharacters(in: .whitespaces)
+            i += 1
             if line.isEmpty { continue }
+            if let t = MarkdownTable.read(lines, from: i - 1) {
+                out.append(.table(t.header, t.rows))
+                i = t.next
+                continue
+            }
             if line == "---" || line == "***" { out.append(.rule); continue }
             if line.hasPrefix("#") {
                 let level = line.prefix { $0 == "#" }.count
@@ -226,5 +237,64 @@ struct AgeText: View {
         TimelineView(.periodic(from: .now, by: 60)) { ctx in
             Text(Dates.age(date, now: ctx.date)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
         }
+    }
+}
+
+/// A markdown table: header row, hairline dividers, cells that wrap. Short columns keep their width;
+/// long ones share the rest, so a "Who | MR | Nudge" table reads like a table, not a wall of pipes.
+struct MarkdownTableView: View {
+    let header: [String]?
+    let rows: [[String]]
+    let inline: (String) -> Text
+
+    var columns: Int { max(header?.count ?? 0, rows.map(\.count).max() ?? 0) }
+
+    /// Columns whose cells are all short enough to sit on one line.
+    var narrow: Set<Int> {
+        Set((0..<columns).filter { c in ([header ?? []] + rows).allSatisfy { c >= $0.count || plainLength($0[c]) <= 22 } })
+    }
+
+    var body: some View {
+        let narrow = narrow
+        Grid(alignment: .topLeading, horizontalSpacing: 14, verticalSpacing: 0) {
+            if let header {
+                GridRow {
+                    ForEach(0..<columns, id: \.self) { c in
+                        cell(c < header.count ? header[c] : "", column: c, narrow: narrow)
+                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 7)
+                .background(Color.primary.opacity(0.04))
+                Divider().gridCellUnsizedAxes(.horizontal)
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
+                GridRow {
+                    ForEach(0..<columns, id: \.self) { c in
+                        cell(c < row.count ? row[c] : "", column: c, narrow: narrow)
+                            .fontWeight(c == 0 ? .medium : .regular)
+                    }
+                }
+                .padding(.vertical, 7)
+                if i < rows.count - 1 { Divider().gridCellUnsizedAxes(.horizontal) }
+            }
+        }
+        .padding(.horizontal, 12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.02)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.1)))
+    }
+
+    @ViewBuilder func cell(_ s: String, column: Int, narrow: Set<Int>) -> some View {
+        if narrow.contains(column) {
+            inline(s).fixedSize()
+        } else {
+            inline(s).fixedSize(horizontal: false, vertical: true).frame(minWidth: 90, maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Visible length, ignoring link targets and markdown symbols.
+    func plainLength(_ s: String) -> Int {
+        s.replacingOccurrences(of: #"\]\([^)]*\)"#, with: "]", options: .regularExpression)
+            .filter { !"[]*`_".contains($0) }.count
     }
 }

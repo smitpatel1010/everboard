@@ -94,9 +94,18 @@ public enum MarkdownHTML {
         var html = ""
         var openList: String?  // "ul" / "ol"
         func closeList() { if let l = openList { html += "</\(l)>"; openList = nil } }
-        for raw in markdown.components(separatedBy: .newlines) {
-            let line = raw.trimmingCharacters(in: .whitespaces)
+        let lines = markdown.components(separatedBy: .newlines)
+        var i = 0
+        while i < lines.count {
+            let line = lines[i].trimmingCharacters(in: .whitespaces)
+            i += 1
             if line.isEmpty { closeList(); continue }
+            if let t = MarkdownTable.read(lines, from: i - 1) {
+                closeList()
+                html += Self.table(t.header, t.rows)
+                i = t.next
+                continue
+            }
             if line == "---" || line == "***" { closeList(); html += "<hr>"; continue }
             if line.hasPrefix("#") {
                 closeList()
@@ -116,6 +125,14 @@ public enum MarkdownHTML {
         }
         closeList()
         return "<meta charset=\"utf-8\">" + html
+    }
+
+    static func table(_ header: [String]?, _ rows: [[String]]) -> String {
+        let cell = "style=\"border:1px solid #ccc;padding:4px 8px;text-align:left;vertical-align:top\""
+        var out = "<table style=\"border-collapse:collapse\">"
+        if let header { out += "<thead><tr>" + header.map { "<th \(cell)>\(inline($0))</th>" }.joined() + "</tr></thead>" }
+        out += "<tbody>" + rows.map { "<tr>" + $0.map { "<td \(cell)>\(inline($0))</td>" }.joined() + "</tr>" }.joined() + "</tbody></table>"
+        return out
     }
 
     /// Inline markdown → HTML via AttributedString runs (bold, italic, code, links).
@@ -142,5 +159,54 @@ public enum MarkdownHTML {
     static func escape(_ s: String) -> String {
         s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
+/// GitHub-style markdown tables: `| a | b |` rows, with a `|---|---|` line after the header.
+public enum MarkdownTable {
+    /// Cells of a table row, or nil if `line` isn't one. Pipes inside `code` or escaped as `\|` don't split cells.
+    public static func cells(_ line: String) -> [String]? {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        guard t.hasPrefix("|"), t.count > 1 else { return nil }
+        var cells: [String] = []
+        var cell = ""
+        var inCode = false
+        var escaped = false
+        for c in t.dropFirst() {
+            if escaped { cell.append(c); escaped = false; continue }
+            switch c {
+            case "\\": escaped = true; cell.append(c)
+            case "`": inCode.toggle(); cell.append(c)
+            case "|" where !inCode: cells.append(cell.trimmingCharacters(in: .whitespaces)); cell = ""
+            default: cell.append(c)
+            }
+        }
+        let rest = cell.trimmingCharacters(in: .whitespaces)
+        if !rest.isEmpty { cells.append(rest) }
+        return cells.map { $0.replacingOccurrences(of: "\\|", with: "|") }
+    }
+
+    /// `|---|:---:|` style divider between header and body.
+    public static func isSeparator(_ cells: [String]) -> Bool {
+        !cells.isEmpty && cells.allSatisfy { c in !c.isEmpty && c.allSatisfy { "-:".contains($0) } && c.contains("-") }
+    }
+
+    /// Reads a table starting at `lines[start]`: header (if a separator follows it), body rows, and the index after it.
+    public static func read(_ lines: [String], from start: Int) -> (header: [String]?, rows: [[String]], next: Int)? {
+        guard start < lines.count, let first = cells(lines[start]) else { return nil }
+        var i = start + 1
+        var header: [String]?
+        var rows: [[String]] = []
+        if i < lines.count, let second = cells(lines[i]), isSeparator(second) {
+            header = first
+            i += 1
+        } else {
+            rows.append(first)
+        }
+        while i < lines.count, let r = cells(lines[i]) {
+            if !isSeparator(r) { rows.append(r) }
+            i += 1
+        }
+        return (header, rows, i)
     }
 }

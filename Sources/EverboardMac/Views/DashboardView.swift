@@ -8,22 +8,48 @@ struct DashboardView: View {
     private var peek: Peek { .shared }
     @AppStorage("sidebarCollapsed") private var collapsed = false
 
+    /// Below this window width the sidebar shows icons only.
+    static let compactWidth: CGFloat = 980
+    /// The page keeps at least this much room beside the peek panel; otherwise the panel floats over it.
+    static let minPageWidth: CGFloat = 520
+
     var body: some View {
         @Bindable var model = model
-        HStack(spacing: 0) {
-            Sidebar(collapsed: $collapsed)
-                .frame(width: collapsed ? 60 : 228)
-            Rectangle().fill(Theme.hairline).frame(width: 1)
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.top, 22)
-                .background(Theme.canvas)
-            if peek.item != nil || peek.event != nil {
-                Rectangle().fill(Theme.hairline).frame(width: 1)
-                PeekPanel()
-                    .frame(width: 380)
-                    .background(Theme.surface)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+        GeometryReader { geo in
+            let narrow = geo.size.width < Self.compactWidth
+            let sidebarCollapsed = collapsed || narrow
+            let sidebarWidth: CGFloat = sidebarCollapsed ? 60 : 228
+            let peekOpen = peek.item != nil || peek.event != nil
+            let peekWidth = min(380, geo.size.width * 0.6)
+            let floatPeek = geo.size.width - sidebarWidth - peekWidth < Self.minPageWidth
+            ZStack(alignment: .topTrailing) {
+                HStack(spacing: 0) {
+                    Sidebar(collapsed: Binding(get: { sidebarCollapsed }, set: { collapsed = $0 }))
+                        .frame(width: sidebarWidth)
+                    Rectangle().fill(Theme.hairline).frame(width: 1)
+                    detail
+                        .padding(.top, 22)
+                        // Pages never set the window's minimum width; they adapt to whatever is left.
+                        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                        .background(Theme.canvas)
+                    if peekOpen && !floatPeek {
+                        Rectangle().fill(Theme.hairline).frame(width: 1)
+                        PeekPanel()
+                            .frame(width: peekWidth)
+                            .background(Theme.surface)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
+                if peekOpen && floatPeek {
+                    PeekPanel()
+                        .frame(width: peekWidth)
+                        .frame(maxHeight: .infinity)
+                        .background(Theme.surface)
+                        .overlay(alignment: .leading) { Rectangle().fill(Theme.hairline).frame(width: 1) }
+                        .shadow(color: .black.opacity(0.18), radius: 18, x: -4)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
         }
         .background(Theme.canvas)

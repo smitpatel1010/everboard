@@ -73,7 +73,7 @@ final class DashboardWindow: NSObject, NSWindowDelegate {
             w.setFrameAutosaveName("EverboardDashboard")
             if !w.setFrameUsingName("EverboardDashboard") { w.center() }
             w.delegate = self
-            w.minSize = NSSize(width: 820, height: 520)
+            w.minSize = NSSize(width: 720, height: 500)
             window = w
         }
         NSApp.setActivationPolicy(.regular)

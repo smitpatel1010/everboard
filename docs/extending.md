@@ -138,6 +138,8 @@ Settings → News → Sources accepts any RSS or Atom URL. For a code default, a
 ## Workflow tips
 
 - Run `open build/Everboard.app --args --demo` to iterate on UI with sample data.
-- Use `--snapshot <dir>` to render all screens to PNG and review them quickly.
+- Use `--snapshot <dir>` to render all screens to PNG and review them quickly (add `--appearance dark` for dark mode). It also renders narrow-window versions.
+- Use `--demo --resize-test` to step every screen through narrow and wide window sizes, with and without the peek panel. It logs each step, so a layout loop shows up as the last step logged before a crash. `EVERBOARD_RESIZE_ONLY=<screen>` limits it to one screen.
+- Avoid AppKit-backed `List`, `Table` and `HSplitView` in dashboard pages: inside the flexible window layout they can loop on constraints while the window resizes. Use `ItemList` or a `ScrollView` + `LazyVStack`.
 - The log is the fastest debugger: `tail -f ~/Library/Logs/Everboard.log`.
 - Keep `EverboardCore` free of AppKit and SwiftUI imports. That keeps it testable and reusable by a possible iPhone app.

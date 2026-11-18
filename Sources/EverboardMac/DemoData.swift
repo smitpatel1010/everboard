@@ -149,8 +149,11 @@ enum DemoData {
             - **Review acme/payments-api!305** from Priya — waiting 30h, pipeline green, small diff.
             - Reply to Priya on **PAY-1305** (she asked about the cache TTL).
             ## Your team
-            - **Asha K** — !290 (v2 alert schema) has been red for 4 days; worth a nudge or pairing.
-            - **Vikram P** — !316 approved by you, ready to merge.
+            | Who | MR | Issue | Nudge |
+            |---|---|---|---|
+            | **Asha K** | acme/payments-api!290 | PAY-1290 | Red for 4 days on the v2 alert schema; offer to pair on the failing migration test |
+            | **Vikram P** | acme/payments-api!316 | PAY-1316 | Approved by you, ready to merge |
+            | **Rahul S** | acme/payments-api!320 | PAY-1520 | Pipeline still running |
             ## FYI
             - Rahul's !320 pipeline is still running.
             """)
@@ -266,6 +269,29 @@ enum DemoData {
         ].sorted { $0.start < $1.start })
     }
 
+    /// `--demo --resize-test`: steps every screen through narrow and wide window sizes, logging each step,
+    /// so a layout loop shows up as the last logged step before a crash.
+    static func resizeTest(model: AppModel) async {
+        let window = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 1180, height: 760), styleMask: [.titled, .resizable],
+                              backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: DashboardView().environment(model))
+        window.orderFront(nil)
+        var screens: [SidebarItem] = [.home, .inbox, .assistant, .mergeRequests, .pipelines, .jira, .workBrief, .reports, .agentRuns,
+                                      .aiActivity, .settings, .worldBrief]
+        if let only = ProcessInfo.processInfo.environment["EVERBOARD_RESIZE_ONLY"] { screens = screens.filter { "\($0)" == only } }
+        for item in screens {
+            model.selection = item
+            for (width, peek) in [(1180.0, false), (760.0, false), (760.0, true), (1180.0, true), (900.0, true), (1400.0, false), (720.0, false)] {
+                if peek, let first = model.allItems.first { Peek.shared.show(first) } else { Peek.shared.close() }
+                Log.info("resize-test: \(item) width=\(Int(width)) peek=\(peek)")
+                window.setContentSize(NSSize(width: width, height: 700))
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        Log.info("resize-test: passed")
+        NSApp.terminate(nil)
+    }
+
     static func snapshot(model: AppModel, to dir: URL) async {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         NSApp.appearance = snapshotAppearance
@@ -299,6 +325,17 @@ enum DemoData {
             save(window.contentView!, to: dir.appendingPathComponent("\(tab).png"))
         }
         model.reportsTab = "team"
+        // Narrow window: the sidebar folds to icons, Home stacks, and the peek panel floats over the page.
+        window.setContentSize(NSSize(width: 760, height: 700))
+        for (name, item) in [("narrow-home", SidebarItem.home), ("narrow-workbrief", .workBrief), ("narrow-mrs", .mergeRequests)] {
+            model.selection = item
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if name == "narrow-mrs", let first = model.items.reviewReady.first { Peek.shared.show(first) }
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            save(window.contentView!, to: dir.appendingPathComponent("\(name).png"))
+        }
+        Peek.shared.close()
+        window.setContentSize(NSSize(width: 1180, height: 760))
         let menu = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 380, height: 520), styleMask: [.borderless], backing: .buffered, defer: false)
         let host = NSHostingView(rootView: MenuBarView().environment(model).background(Color(nsColor: .windowBackgroundColor)))
         menu.contentView = host
