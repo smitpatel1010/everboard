@@ -80,6 +80,11 @@ final class AppModel {
     var reportRunning: Set<String> = []
     var reportError: String?
 
+    /// Set when a call finds the claude CLI logged out; scheduled AI jobs pause until a login check or any call succeeds.
+    var claudeLoggedOutSince: Date?
+    @ObservationIgnored private var lastLoginCheck: Date?
+    @ObservationIgnored private var aiBackoff = RetryBackoff()
+
     // News follow / ask
     var followed: [FollowedStory] = []
     var askRunning = false
@@ -344,8 +349,19 @@ final class AppModel {
     /// Every Claude call is masked per Settings → AI privacy, then recorded (usage + the exact prompt sent).
     var claude: ClaudeRunning {
         let cli = ClaudeCLIRunner(executable: config.expandedClaudePath, defaultModel: config.claudeModel)
-        return PrivacyClaudeRunner(base: RecordingClaudeRunner(base: cli, store: store, logPrompts: config.aiLogDays > 0),
-                                   policy: privacyPolicy)
+        let masked = PrivacyClaudeRunner(base: RecordingClaudeRunner(base: cli, store: store, logPrompts: config.aiLogDays > 0),
+                                         policy: privacyPolicy)
+        return OutcomeReportingClaudeRunner(base: masked) { [weak self] error in await self?.noteClaudeOutcome(error) }
+    }
+
+    func noteClaudeOutcome(_ error: Error?) {
+        if error == nil {
+            if claudeLoggedOutSince != nil { Log.info("claude works again; resuming scheduled AI jobs") }
+            claudeLoggedOutSince = nil
+        } else if case .notLoggedIn = error as? ClaudeError, claudeLoggedOutSince == nil {
+            claudeLoggedOutSince = Date()
+            Log.info("claude CLI is logged out; pausing scheduled AI jobs until it's logged in again")
+        }
     }
 
     var privacyPolicy: PrivacyPolicy {
@@ -557,30 +573,54 @@ final class AppModel {
     func tick(now: Date = Date()) {
         flushHeldIfDue(now: now)
         calendar.reload()
-        if config.weeklyReportEnabled, config.aiWorkEnabled, Calendar.current.component(.weekday, from: now) == config.weeklyReportWeekday,
-           let due = Self.dueTime(config.weeklyReportTime, now: now) {
-            Task {
-                if await shouldRun(lastKey: "report.weekly.at", due: due, now: now) { generateWeekly(notify: true) }
-            }
-        }
         if lastNewsCollect.map({ now.timeIntervalSince($0) >= config.newsInterval }) ?? true, !newsRunning {
             lastNewsCollect = now
             Task { await collectNews() }
         }
         Task {
+            guard await claudeAvailableForSchedule(now: now) else { return }
+            if config.weeklyReportEnabled, config.aiWorkEnabled, Calendar.current.component(.weekday, from: now) == config.weeklyReportWeekday,
+               let due = Self.dueTime(config.weeklyReportTime, now: now),
+               await shouldRun(lastKey: "report.weekly.at", due: due, now: now), takeSlot("report.weekly", due: due, now: now) {
+                generateWeekly(notify: true)
+            }
             let isWeekday = !Calendar.current.isDateInWeekend(now)
             if config.workBriefEnabled, config.aiWorkEnabled, isWeekday || !config.workBriefWeekdaysOnly,
                let due = Self.dueTime(config.workBriefTime, now: now),
-               await shouldRun(lastKey: "brief.work.at", due: due, now: now) {
+               await shouldRun(lastKey: "brief.work.at", due: due, now: now), takeSlot("brief.work", due: due, now: now) {
                 generateWorkBrief(notify: true)
             }
             for time in config.newsBriefTimes {
                 if let due = Self.dueTime(time, now: now), await shouldRun(lastKey: "news.brief.at", due: due, now: now) {
-                    generateNewsBrief(notify: true)
+                    if takeSlot("news.brief", due: due, now: now) { generateNewsBrief(notify: true) }
                     break
                 }
             }
         }
+    }
+
+    /// Spends a scheduled run: false while the job is backing off after recent failed attempts.
+    private func takeSlot(_ key: String, due: Date, now: Date) -> Bool {
+        guard aiBackoff.allows(key, due: due, now: now) else { return false }
+        aiBackoff.recordAttempt(key, due: due, now: now)
+        return true
+    }
+
+    /// While the CLI is logged out, scheduled AI jobs wait. Asks `claude auth status` at most every 5 minutes;
+    /// if the CLI can't say, lets one real attempt through per hour instead.
+    private func claudeAvailableForSchedule(now: Date) async -> Bool {
+        guard let since = claudeLoggedOutSince else { return true }
+        if let last = lastLoginCheck, now.timeIntervalSince(last) < 5 * 60 { return false }
+        lastLoginCheck = now
+        switch await ClaudeCLIRunner(executable: config.expandedClaudePath).isLoggedIn() {
+        case true?: break
+        case false?: return false
+        case nil: if now.timeIntervalSince(since) < 3600 { return false }
+        }
+        guard claudeLoggedOutSince != nil else { return true }
+        claudeLoggedOutSince = nil
+        Log.info("claude login looks fine again; resuming scheduled AI jobs")
+        return true
     }
 
     /// Today's occurrence of "HH:mm" if it has passed within the last 6 hours (catches up after sleep).

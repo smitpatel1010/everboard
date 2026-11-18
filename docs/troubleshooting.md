@@ -16,6 +16,8 @@ Start with the log: `tail -50 ~/Library/Logs/Everboard.log`, then `swift run eve
 | **No meetings shown** | Allow Calendar access (System Settings → Privacy & Security → Calendars), and add your work account in Internet Accounts. |
 | **⌥Space does nothing** | Another app took the shortcut (the log says "palette hotkey failed"). Free it up in that app, or turn the palette off in Settings → General. |
 | **AI buttons fail: "claude CLI not found"** | Install Claude Code, run `claude` once to sign in, or set the path in Settings → General. Use **Test claude** to verify. |
+| **AI fails: "The claude CLI is logged out"** | The CLI's saved login expired or was revoked. Claude in the desktop app may still work, because it signs in separately. Run `claude auth login`, then **Test claude**. Scheduled briefs and reports pause while the CLI is logged out. Everboard runs `claude auth status` every 5 minutes and resumes them once you've logged in again. |
+| **A scheduled brief failed** | It retries after 5, 10, 20, 40 and then every 60 minutes until it succeeds or its 6-hour window passes. Run it yourself any time from its page or the palette. |
 | **AI call timed out** | Big diffs or web search can be slow. Retry, or set a faster model (e.g. `sonnet`). |
 | **News brief is empty or off-topic** | Run `swift run everboard-cli news sources --check`. Tune Settings → News → preferences, or send feedback from the brief. |
 | **Moved the project folder and secrets stopped loading** | The secrets path is compiled in. Run `make install` again from the new location. |

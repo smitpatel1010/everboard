@@ -86,6 +86,8 @@ public enum ClaudeError: Error, LocalizedError {
     case failed(String)
     case timedOut
     case blocked(String)
+    /// The CLI has no working login (expired or revoked); every call fails until the user logs in again.
+    case notLoggedIn(String)
 
     public var errorDescription: String? {
         switch self {
@@ -93,7 +95,15 @@ public enum ClaudeError: Error, LocalizedError {
         case .failed(let m): return "claude failed: \(m)"
         case .timedOut: return "claude timed out"
         case .blocked(let m): return m
+        case .notLoggedIn(let m): return "The claude CLI is logged out (\(m)). Run `claude auth login` in Terminal, then try again."
         }
+    }
+
+    /// Whether the CLI's error text means its login is gone, as opposed to a one-off failure.
+    public static func isAuthFailure(_ message: String) -> Bool {
+        let m = message.lowercased()
+        return ["failed to authenticate", "not logged in", "please run /login", "invalid api key",
+                "oauth token has expired", "authentication_error"].contains { m.contains($0) }
     }
 }
 
@@ -140,7 +150,43 @@ public struct ClaudeCLIRunner: ClaudeRunning {
         }
     }
 
+    /// Asks `claude auth status`: true/false when the CLI says, nil when it can't tell (missing binary, odd output).
+    public func isLoggedIn() async -> Bool? {
+        guard FileManager.default.isExecutableFile(atPath: executable) else { return nil }
+        let exe = executable
+        return await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .utility).async {
+                let out = try? Self.capture(exe, ["auth", "status", "--json"], stdin: "", timeout: 30).out
+                cont.resume(returning: out.flatMap(Self.parseLoggedIn))
+            }
+        }
+    }
+
+    static func parseLoggedIn(_ data: Data) -> Bool? {
+        guard let json = try? JSONDecoder().decode(JSONValue.self, from: data), case .bool(let b) = json["loggedIn"] ?? .null else { return nil }
+        return b
+    }
+
     private static func runSync(_ exe: String, _ args: [String], stdin: String, timeout: TimeInterval) throws -> ClaudeResponse {
+        let (outData, errData) = try capture(exe, args, stdin: stdin, timeout: timeout)
+        guard let json = try? JSONDecoder().decode(JSONValue.self, from: outData) else {
+            let err = String(decoding: errData, as: UTF8.self) + String(decoding: outData, as: UTF8.self)
+            if ClaudeError.isAuthFailure(err) { throw ClaudeError.notLoggedIn(String(err.prefix(200))) }
+            throw ClaudeError.failed(String(err.prefix(400)))
+        }
+        if case .bool(true) = json["is_error"] ?? .null {
+            let message = json["result"]?.stringValue ?? "unknown error"
+            if ClaudeError.isAuthFailure(message) { throw ClaudeError.notLoggedIn(message) }
+            throw ClaudeError.failed(message)
+        }
+        var cost: Double?
+        if case .number(let c) = json["total_cost_usd"] ?? .null { cost = c }
+        return ClaudeResponse(text: json["result"]?.stringValue ?? "", structured: json["structured_output"], costUSD: cost,
+                              usage: ClaudeUsage.parse(json))
+    }
+
+    /// Runs the CLI in a scratch dir with our secrets stripped from its environment; returns stdout and stderr.
+    private static func capture(_ exe: String, _ args: [String], stdin: String, timeout: TimeInterval) throws -> (out: Data, err: Data) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: exe)
         p.arguments = args
@@ -177,18 +223,7 @@ public struct ClaudeCLIRunner: ClaudeRunning {
             throw ClaudeError.timedOut
         }
         p.waitUntilExit()
-
-        guard let json = try? JSONDecoder().decode(JSONValue.self, from: outData) else {
-            let err = String(decoding: errData, as: UTF8.self) + String(decoding: outData, as: UTF8.self)
-            throw ClaudeError.failed(String(err.prefix(400)))
-        }
-        if case .bool(true) = json["is_error"] ?? .null {
-            throw ClaudeError.failed(json["result"]?.stringValue ?? "unknown error")
-        }
-        var cost: Double?
-        if case .number(let c) = json["total_cost_usd"] ?? .null { cost = c }
-        return ClaudeResponse(text: json["result"]?.stringValue ?? "", structured: json["structured_output"], costUSD: cost,
-                              usage: ClaudeUsage.parse(json))
+        return (outData, errData)
     }
 }
 #endif
