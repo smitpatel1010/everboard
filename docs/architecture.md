@@ -13,7 +13,7 @@ everboard/
 │   │   ├── GitLab/               REST + GraphQL client, GitLabSource
 │   │   ├── GitHub/               REST + GraphQL client, GitHubSource
 │   │   ├── Jira/                 REST v3 client, JiraSource, ADF helpers
-│   │   ├── AI/                   ClaudeCLIRunner, WorkAssistant, Reports, TeamRadar, Usage
+│   │   ├── AI/                   ClaudeCLIRunner, WorkAssistant, Reports, TeamRadar, Assistant, Usage
 │   │   ├── Agents/               AgentAction templates, AgentRunner, run history
 │   │   ├── Custom/               command and folder sources (feeds without code)
 │   │   ├── Brain/                markdown notes: frontmatter, managed blocks, Brain writer

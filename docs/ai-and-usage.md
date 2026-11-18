@@ -33,6 +33,7 @@ The path to `claude` is auto-detected (`~/.local/bin`, Homebrew, `/usr/local/bin
 | Daily standup (`report.standup`) | Your merged and reviewed MRs since the last workday, Jira issues you touched, open MRs | none | 1–4k in |
 | Weekly report (`report.weekly`) | Merged and open MRs for you and each reportee over 7 days, Jira issues resolved | none | 3–15k in |
 | Team health AI read (`team.commentary`) | The metrics table only | none | < 1k in |
+| Assistant (`assistant.command`) | Your request (text or transcribed speech), up to 120 dashboard items as one line each (ref, title, status, person, age), your agent action names, your team's names, the last few turns | none | 2–6k in |
 | 1:1 prep (`team.oneonone`) | One reportee's merged MRs/PRs and reviews over 14 days, their open MRs, reviews waiting on them, recent Jira movement; your own note about them only if **Brain → Use my notes as AI context** is on | none | 1–6k in |
 | Meeting prep (`meeting.prep`) | Event title, time, attendees, notes (unless turned off), related MR/issue titles | none | 1–3k in |
 | World & Tech brief (`news.brief`) | About 150 headlines with snippets, your preferences, recent feedback | `WebSearch` if gap check is on | 15–25k in |
