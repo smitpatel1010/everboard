@@ -28,12 +28,18 @@ I built it as the one app I keep open all day: one place to see my own work, my 
 
 ### Team health and reports, written for you
 
-Per-person metrics (cycle time, change size, stuck work, reviews given), plus a daily standup and a weekly report written by Claude from your actual GitLab, GitHub and Jira activity.
+Per-person metrics (cycle time, change size, stuck work, reviews given) and a **team radar** (who's loaded, whose changes wait on review, what's aging or red, how Jira moved). Claude drafts a daily standup, a weekly report and **1:1 prep** from your actual GitLab, GitHub and Jira activity. Everything is a draft for you; nothing is sent.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/reports.png">
   <img alt="Team health table with an AI read of who shipped and who might be stuck" src="docs/screenshots/light/reports.png">
 </picture>
+
+### Your agents, your feeds, your notes
+
+- **Agent actions:** right-click any MR, PR, pipeline or issue to run your own CLI agent on it, such as `claude -p "/deep-review {url}"` or `cursor-agent …`. You see the command first and the output streams in. Every run is kept, and nothing is ever posted for you.
+- **Feeds without code:** point Everboard at a script that prints JSON, or a folder of markdown notes, and it becomes a feed with notifications.
+- **A markdown brain:** optionally write the work brief, team digest, 1:1 prep, weekly draft and agent runs into an Obsidian-style folder (frontmatter, `[[links]]`) without ever touching what you wrote yourself.
 
 ### A morning brief that tells you what matters
 

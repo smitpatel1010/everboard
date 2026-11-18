@@ -13,9 +13,12 @@ everboard/
 │   │   ├── GitLab/               REST + GraphQL client, GitLabSource
 │   │   ├── GitHub/               REST + GraphQL client, GitHubSource
 │   │   ├── Jira/                 REST v3 client, JiraSource, ADF helpers
-│   │   ├── AI/                   ClaudeCLIRunner, WorkAssistant, Reports, Usage
+│   │   ├── AI/                   ClaudeCLIRunner, WorkAssistant, Reports, TeamRadar, Usage
+│   │   ├── Agents/               AgentAction templates, AgentRunner, run history
+│   │   ├── Custom/               command and folder sources (feeds without code)
+│   │   ├── Brain/                markdown notes: frontmatter, managed blocks, Brain writer
 │   │   ├── News/                 feed parsing, fetchers, clustering, brief, follow/ask
-│   │   └── Util/                 HTTP, dates, HTML→text, JSON, log
+│   │   └── Util/                 HTTP, dates, HTML→text, JSON, ShellCommand, log
 │   ├── EverboardMac/             ← the macOS app: SwiftUI views + system integration
 │   │   ├── EverboardApp.swift    entry point, menu bar, dashboard window
 │   │   ├── AppModel*.swift       the single source of truth the UI observes
@@ -87,6 +90,7 @@ SQLite tables (`Store.swift` migrations):
 - `articles`, `news_briefs`, `news_feedback`, `shown_stories`: news
 - `followed_stories`, `followed_matches`: followed stories and their updates
 - `ai_usage`: token usage
+- `agent_runs`: agent action history with output
 
 ## Jira specifics
 

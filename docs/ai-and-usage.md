@@ -33,6 +33,7 @@ The path to `claude` is auto-detected (`~/.local/bin`, Homebrew, `/usr/local/bin
 | Daily standup (`report.standup`) | Your merged and reviewed MRs since the last workday, Jira issues you touched, open MRs | none | 1–4k in |
 | Weekly report (`report.weekly`) | Merged and open MRs for you and each reportee over 7 days, Jira issues resolved | none | 3–15k in |
 | Team health AI read (`team.commentary`) | The metrics table only | none | < 1k in |
+| 1:1 prep (`team.oneonone`) | One reportee's merged MRs/PRs and reviews over 14 days, their open MRs, reviews waiting on them, recent Jira movement; your own note about them only if **Brain → Use my notes as AI context** is on | none | 1–6k in |
 | Meeting prep (`meeting.prep`) | Event title, time, attendees, notes (unless turned off), related MR/issue titles | none | 1–3k in |
 | World & Tech brief (`news.brief`) | About 150 headlines with snippets, your preferences, recent feedback | `WebSearch` if gap check is on | 15–25k in |
 | Go deeper (`news.deeper`) | One story and its source URLs | `WebFetch`, `WebSearch` | varies |
@@ -42,6 +43,16 @@ The path to `claude` is auto-detected (`~/.local/bin`, Homebrew, `/usr/local/bin
 Work data goes to Claude only through these features: a scheduled work brief, a weekly report, or a button you click. News prompts never contain work data.
 
 Results are cached (`ai_cache` table), so opening the same MR summary or Jira digest again is free until the item changes.
+
+## Agent actions are your own commands
+
+Agent actions (Settings → Agents) don't go through Everboard's Claude runner. Everboard runs the command *you* wrote, such as `claude -p …` or `cursor-agent …`, with your permissions, and that tool decides what it sends and to whom. So:
+
+- AI privacy masking, the AI Activity log and the usage dashboard don't apply to them. Their record is the **Agent Runs** history: the exact command (with values filled in), the folder, the status and the full output.
+- Everboard passes item values only as `EVERBOARD_*` environment variables and strips its own tokens from the environment.
+- Nothing runs until you click it, and nothing is posted anywhere by Everboard.
+
+If the CLI agent has tools that can post comments or push code, keep that in mind when you write the prompt. The examples in Settings ask for a report only.
 
 ## The usage dashboard
 

@@ -43,6 +43,80 @@ GitLab and GitHub share one model, so a new host plugs into every screen, rule a
 5. **Show it.** Load the items in `AppModel.reloadData()` into `ItemsSnapshot`, add a view in `Views/`, and add a `SidebarItem` case plus a sidebar `Label` in `DashboardView`.
 6. **Test the rules.** Copy the pattern in `Tests/EverboardCoreTests/EngineTests.swift`: an in-memory store, one baseline run, then a run that should produce an event.
 
+## Add a feed without code
+
+**Settings → Sources** turns any script or folder into a feed. Nothing to compile.
+
+### Command source
+
+Everboard runs the command through `zsh -c` from your home folder, on the interval you set (timeout 2 minutes), and parses what it prints:
+
+```json
+{
+  "mode": "replace",
+  "items": [
+    {
+      "id": "deploy-481",
+      "title": "Deploy web to production",
+      "url": "https://deploys.example/481",
+      "subtitle": "web",
+      "status": "running",
+      "author": "release-bot",
+      "createdAt": "2026-11-18T09:12:00Z",
+      "updatedAt": 1795000000,
+      "attrs": { "env": "prod", "sha": "4f2a9c1" }
+    }
+  ]
+}
+```
+
+- A bare array of items works too.
+- `id` and `title` are required; items without them are skipped. Item ids become `custom.<source id>:<id>`, so keep them **stable** between runs, otherwise every poll looks like new items.
+- `mode`: `replace` (default) means the output is the complete current list; `accumulate` means only new or changed items, kept until they age out.
+- Dates are ISO 8601 strings or Unix seconds (milliseconds work too). `attrs` values are turned into strings.
+- A non-zero exit, a timeout or output that isn't JSON shows as an error on the source's health chip; the previous items stay.
+- Events: a new item fires *New item in a custom feed*, and a changed `status` fires *Status change in a custom feed*. Both use deterministic ids, so repeats don't notify twice.
+- The command gets `EVERBOARD_SOURCE` (the source id) and not your Everboard tokens.
+
+A tiny example that lists open GitHub issues with the `gh` CLI:
+
+```sh
+gh issue list --repo owner/repo --json number,title,url,state,updatedAt \
+  | jq '[.[] | {id: (.number|tostring), title, url, status: .state, updatedAt}]'
+```
+
+### Folder source
+
+Lists `*.md` files in a folder and its subfolders (hidden folders such as `.obsidian` are skipped, up to 500 files). Frontmatter becomes `attrs`; `title`, `status`, `url` and `author`/`owner` fill the matching fields. Set a tag to only include notes tagged with it. The item id is the note's path relative to the folder, so renaming a note makes it a new item.
+
+### In code
+
+Both are ordinary `DataSource`s (`Custom/CustomSource.swift`) built by `CustomSources.sources(_:)` from `AppConfig.customSources`, so they follow every rule above: deterministic ids, one `replace` scope per source, events from `ItemChange`.
+
+## Add an agent action
+
+Agent actions are config, not code: **Settings → Agents**, or `agentActions` in `config.json`:
+
+```json
+{
+  "name": "Claude: review this change",
+  "command": "claude -p \"/deep-review {url}\"",
+  "targets": ["change"],
+  "workingDirectory": "{repoPath}",
+  "timeoutMinutes": 15,
+  "confirm": true,
+  "icon": "sparkles"
+}
+```
+
+- `targets`: `change` (MRs/PRs), `pipeline`, `issue` (Jira), `todo`, `custom` (feed items).
+- Placeholders are listed in `AgentTemplate.placeholders`. To add one, give it a value in `AgentTemplate.values(for:)` and a line in that list; the safe quoting is automatic.
+- `AgentRunner.plan` resolves an action against an item and reports problems (an unknown placeholder, a value the item doesn't have, a missing folder) before anything runs.
+
+## Write to the brain folder
+
+`Brain` (`Brain/Brain.swift`) is the only writer. Use `upsertBlock` (or the `writeDailySection` / `writePersonSection` / `writeWeeklySection` helpers) to set an Everboard-owned section in a note the user may also edit, and `createNote` for new files; it never overwrites. From the app, call `model.writeToBrain("what") { try $0.… }`, which does nothing when no folder is set and turns failures into a toast.
+
 ## Add a setting
 
 1. Add a property with a default to `AppConfig`.

@@ -23,6 +23,10 @@ Everboard runs locally, with your own credentials, on a single-user Mac. There's
 | `claude` subprocess reading tokens | Token environment variables are removed from the child's environment; there's no shell (arguments are passed as an array, the prompt via stdin); it runs in an empty scratch directory with no MCP servers | `ClaudeCLIRunner.runSync` |
 | SQL injection | All queries are parameterised; `LIKE` patterns are escaped | `Store.swift` |
 | Accidental write actions | GitLab actions need the `api` scope (`read_api` can only read), GitHub ones `repo`; actions always use the account the item came from; Approve asks for confirmation; comments are sent only after you click Post | `AppModel+Features.swift` |
+| Shell injection through agent actions | Item values (titles, branches, URLs) are never spliced into the command text: each `{placeholder}` becomes a quoted `$EVERBOARD_…` reference that fits the quoting around it, and the value travels in the environment. A test runs a title full of `$(…)`, backticks and quotes and checks nothing executes. | `AgentTemplate.shellCommand`, `AgentTests` |
+| Agent actions or command sources reading tokens | Everboard's token variables are removed from the environment of every command it runs | `ShellCommand.environment` |
+| Agents acting without you | Agent actions run only from a click, show the command and ask first by default, have a time limit, and can be stopped. Their output is never posted by Everboard. | `AgentCenter`, `AgentConfirmSheet` |
+| Writing outside the brain folder | Every note path is resolved and checked to stay inside the folder (no `..`, no symlinked escapes); Everboard only replaces its own marked sections and never overwrites a file it didn't create | `Brain.url`, `ManagedBlock` |
 | Notification or banner spoofing | Banners render plain text only (no HTML) | `ToastCenter`, `Notifier` |
 | Global hotkey as a keylogger | The Carbon `RegisterEventHotKey` API receives only its own ⌥Space combo and needs no Accessibility permission | `CommandPalette.swift` |
 | Sensitive text in prompts | Secrets are masked before sending; emails, names and your listed terms become placeholders that are restored locally; diffs, Jira text and meeting notes can each be withheld; work features can be switched off entirely. Every prompt is viewable on the AI Activity screen. | `PrivacyClaudeRunner`, `Redactor` |
@@ -37,6 +41,7 @@ Tests cover the URL scheme allowlist, HTTPS enforcement, automatic `chmod 600`, 
 - **Unsigned builds** (ad-hoc) run without the hardened runtime. Create the "Everboard Local" certificate ([Build & deploy](build-and-deploy.md#signing)); the script then signs with `--options runtime`.
 - **The secrets file is plaintext**, like most CLI tools' configuration. Don't sync the project folder to shared drives, and don't zip and share it with `secrets.env` inside. Keychain storage is a possible future improvement.
 - **Web panels** are a normal browser: only add sites you trust.
+- **Agent actions and command sources run your commands** with your permissions. Everboard keeps item data out of the command text, but a CLI agent you give tools to can still act on what it reads (prompt injection through an MR description, say). Prefer prompts that ask for a report, and agents without write tools.
 - **The token scope is your call.** `read_api` is safest; `api` enables the in-app actions.
 
 ## Reporting

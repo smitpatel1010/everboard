@@ -26,7 +26,9 @@ Open it from the menu, from the Dock while it's open, by launching the app again
 | **Pipelines** | Pipelines you triggered in the last 7 days, with failures from the last 24 hours first | Retry or open |
 | **Jira** | Assigned to me, plus one tab per watched filter. Done issues (resolved, or in a Done-category status such as Closed or Archive) are hidden unless you tick **Show done**, which also lists issues assigned to you that finished in the last 30 days. Home, briefs and notifications only ever use open issues. | ✨ AI digest; ➜ move the issue through its workflow or comment |
 | **Work Brief** | Claude's morning brief: what needs you today, your team, FYI | Generate, Listen |
-| **Team & Reports** | **Team health** metrics for each reportee, **Daily standup**, **Weekly report** | Refresh, AI read, Copy, Listen |
+| **Team & Reports** | **Radar** (each reportee's load, review waits, aging and red MRs, Jira movement, plus a digest), **Team health** metrics, **1:1 prep**, **Daily standup**, **Weekly report**. Everything here is a draft for you; nothing is sent to anyone. | Refresh, AI read, Copy, Save to notes, Listen |
+| **Feeds** | One screen per custom source (Settings → Sources): items from your script's JSON, or notes from a markdown folder | Open, filter, run an agent, mute |
+| **Agent Runs** | Every agent action you ran, newest first, with its output | Show output, stop, open the item or saved note, delete |
 | **Web panels** | Any page you add, e.g. Jira dashboards, Grafana | Back, reload, open in browser |
 | **World & Tech** | Personal news brief (see below) | — |
 | **AI Activity** | Every Claude call: the exact prompt as it left your Mac (after masking), the instructions, and the reply, plus what was masked | Filter work/news, copy, clear the log |
@@ -47,6 +49,7 @@ Open it from the menu, from the Dock while it's open, by launching the app again
 | Major story | A big story matching your keywords: 3+ sources within 3 hours, or 600+ points on Hacker News | ✅ |
 | Followed story update | A new article about a story you follow | |
 | Brief / report ready | Scheduled AI output finished | always shown |
+| Custom feed: new item / status change | Per custom source, with its own toggles | |
 
 **Batching.**
 - Urgent categories notify immediately; the rest arrive as one digest every 60 minutes (configurable).
@@ -69,10 +72,60 @@ MR references (`group/project!123`, and `!123` when it matches one known MR) and
 | Daily standup | Team & Reports | On demand |
 | Weekly report + team health | Team & Reports | Fridays 16:00 (configurable), or on demand |
 | Team health AI read | Team & Reports → Team health | On demand |
+| 1:1 prep | Team & Reports → 1:1 prep, or "1:1 prep" on the radar | On demand |
 | Meeting prep | ✨ next to a meeting | On demand |
 | World & Tech brief | World & Tech | 08:30, optional 18:00, or on demand |
 | Go deeper / Ask the news | World & Tech | On demand |
 | Learning from feedback | World & Tech | After you send feedback |
+
+## Agent actions
+
+Run your own CLI agent on any MR, PR, pipeline, Jira issue, to-do or feed item from its right-click menu (or the terminal button in the Pipelines and Jira tables). Each action is a command template you define in **Settings → Agents**, for example:
+
+```sh
+claude -p "/deep-review {url}"
+cursor-agent -p "Review {sourceBranch} against {targetBranch}. Report only."
+```
+
+- **Placeholders** such as `{url}`, `{iid}`, `{projectPath}`, `{ref}`, `{jiraKey}`, `{sourceBranch}` and `{repoPath}` are filled from the item. Settings lists them all. `{repoPath}` comes from **Local repositories**, which maps a project (`group/app`, `owner/repo`, or just `app`) to your checkout.
+- **Safe by construction.** Values reach the command as environment variables (`EVERBOARD_URL`, …), quoted to match where you wrote the placeholder, so an MR titled `$(rm -rf ~)` is passed as text and never executed. Your Everboard tokens are removed from the command's environment.
+- **You stay in control.** Everboard shows the exact command and folder and asks before running, unless you turn that off for an action. Output streams into a sheet; you can stop the run at any time. Everboard never posts the output: **Copy** and **Comment…** (which opens the comment box pre-filled, for you to edit and post) are always your click.
+- **History.** Every run is kept with its output under **Agent Runs** (30 days by default). Runs left over by a quit are marked cancelled.
+- **Working folder.** Optional per action, e.g. `{repoPath}`. Without one the command runs in an empty scratch folder, so the agent doesn't pick up a random project.
+- **Examples** in Settings → Agents → *Add an example* only read and report.
+
+## Team radar and 1:1 prep
+
+For managers with reportees in **Settings → Team**:
+
+- **Radar** is computed locally from data Everboard already polls (no AI). For each person it shows open MRs/PRs, how many reviews are waiting on them, how long their ready MRs have waited without an approval, aging MRs (open longer than the threshold in Settings → Team, 3 days by default), red pipelines, and Jira issues assigned to them that moved in the last 7 days. Jira movement only covers issues in your assigned list and your watched filters. Expand a person to see the items; **Copy digest** gives a markdown summary with a **Needs attention** list.
+- **1:1 prep** drafts wins to recognise, work in flight, where you can help and questions to ask, from the person's last two weeks of merged MRs/PRs, reviews they gave, what's open and Jira movement. If **Settings → Brain → Use my notes as AI context** is on, your own note about them is included (masked like every prompt).
+- **Weekly report** stays a draft you copy; nothing is sent on a schedule. When a brain folder is set it's also saved to the week's note, with the team digest.
+
+## Custom feeds
+
+Add feeds in **Settings → Sources**, no code needed:
+
+- **Command source.** Everboard runs your command on a timer (zsh, from your home folder) and reads JSON from its output: an array of items, or `{"items": [...]}`. Each item needs an `id` and `title`; `url`, `subtitle`, `status`, `author`, `createdAt`, `updatedAt` and `attrs` are optional. See [Extending](extending.md#add-a-feed-without-code) for the format.
+- **Folder source.** Lists the markdown notes in a folder (for example a projects folder in your vault). Titles come from frontmatter `title`, the first `# heading`, or the file name; `status`, `url` and other frontmatter fields are kept. Optionally only notes with a given tag.
+
+Each source appears under **Feeds** in the sidebar. It can notify on new items and on status changes, and supports agent actions and muting like every other item. Use **Test** in the editor to check a source before saving it.
+
+## Brain folder
+
+Point **Settings → Brain** at a folder of markdown notes, such as an Obsidian vault, and Everboard writes:
+
+| What | Where | When |
+|---|---|---|
+| Work brief, standup draft, team digest, agent-run index | `Daily/<yyyy-MM-dd>.md` | When each is generated or saved |
+| 1:1 prep | `People/<Name>.md` | When you draft it |
+| Weekly report draft and team digest | `Weekly/<yyyy>-W<ww>.md` | When the report is generated |
+| Each agent run, with command and output | `Everboard/Agent runs/<date> <action> <item>.md` | When the run finishes |
+
+- Notes have YAML frontmatter (`date`, `tags`, …) and use `[[links]]` for people and days, so they show up in Obsidian's graph and backlinks.
+- **Your writing is never overwritten.** In notes you may also edit (daily, people, weekly), Everboard only replaces its own section between `<!-- everboard:… -->` markers and leaves everything else alone. Agent-run notes are new files; a name clash gets " 2" instead of replacing anything.
+- Folder names and the daily-note name format are configurable, to match an existing vault.
+- **Reading back** is off by default. When on, the text *you* wrote in a person's note (Everboard's sections excluded) is added to their 1:1 prep prompt.
 
 ## World & Tech brief
 
