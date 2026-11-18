@@ -15,6 +15,8 @@ struct ItemsSnapshot {
     /// Assigned issues finished in the last 30 days (Jira tab, "Show done" only).
     var jiraDone: [FeedItem] = []
     var jiraFilters: [String: [FeedItem]] = [:]
+    /// Custom source id → its items (Settings → Sources).
+    var custom: [String: [FeedItem]] = [:]
 
     /// Review requests that are actually ready: drafts aren't waiting on you yet.
     var reviewReady: [FeedItem] { review.filter { $0["draft"] != "1" } }
@@ -32,8 +34,10 @@ struct AIPanel: Identifiable {
 }
 
 enum SidebarItem: Hashable {
-    case home, inbox, mergeRequests, pipelines, jira, workBrief, reports, worldBrief, aiActivity, settings
+    case home, inbox, mergeRequests, pipelines, jira, workBrief, reports, worldBrief, aiActivity, settings, agentRuns
     case web(String)
+    /// A custom source's feed, by source id.
+    case feed(String)
 }
 
 @MainActor @Observable
@@ -137,6 +141,7 @@ final class AppModel {
                 newsBrief = try? await store.latestBrief()
                 await reloadArticles()
                 await loadReportsAndFollows()
+                await AgentCenter.shared.reloadHistory()
                 if let dir = DemoData.snapshotDir { await DemoData.snapshot(model: self, to: dir) }
             }
             return
@@ -153,7 +158,8 @@ final class AppModel {
             await refreshVotes()
             await loadReportsAndFollows()
             lastNewsCollect = await store.value("news.collected.at").flatMap(Dates.parseISO)
-            try? await store.prune(aiLogDays: config.aiLogDays)
+            try? await store.prune(aiLogDays: config.aiLogDays, agentRunDays: config.agentRunDays)
+            await AgentCenter.shared.start()
         }
         tickTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
@@ -181,6 +187,8 @@ final class AppModel {
         } else {
             health["jira"] = .notConfigured("Jira not configured")
         }
+        sources += CustomSources.sources(config.customSources)
+        for key in Array(health.keys) where key.hasPrefix("custom.") && !sources.contains(where: { $0.id == key }) { health[key] = nil }
         for s in sources where health[s.id] == nil || health[s.id].map({ if case .notConfigured = $0 { return true }; return false }) == true {
             health[s.id] = .idle
         }
@@ -203,6 +211,7 @@ final class AppModel {
         guard c != config else { return }
         let intervalsChanged = c.gitlabInterval != config.gitlabInterval || c.jiraInterval != config.jiraInterval
         let filtersChanged = c.jiraFilters.map(\.id) != config.jiraFilters.map(\.id) || c.reportees != config.reportees
+            || c.customSources != config.customSources
         config = c
         if !DemoData.isDemo { try? c.save() }
         if intervalsChanged || filtersChanged {
@@ -288,6 +297,9 @@ final class AppModel {
             for f in config.jiraFilters {
                 s.jiraFilters[f.id] = try await store.items(scope: JiraSource.Scope.filterPrefix + f.id).sortedByUpdate()
             }
+            for c in config.customSources {
+                s.custom[c.id] = try await store.items(scope: c.scope).sortedByUpdate()
+            }
             items = s
             refLinker = RefLinker(gitlabBase: accounts.first { $0.kind == .gitlab }?.webURL,
                                   githubBase: accounts.first { $0.kind == .github }?.webURL,
@@ -302,7 +314,7 @@ final class AppModel {
 
     var allItems: [FeedItem] {
         items.mine + items.review + items.assigned + items.reportees + items.todos + items.pipelines
-            + items.jiraAssigned + items.jiraDone + items.jiraFilters.values.flatMap { $0 }
+            + items.jiraAssigned + items.jiraDone + items.jiraFilters.values.flatMap { $0 } + items.custom.values.flatMap { $0 }
     }
 
     func item(withId id: String?) -> FeedItem? {
@@ -407,6 +419,7 @@ final class AppModel {
     /// Display name for a source-health key ("gitlab.work" → "GitLab · work").
     func sourceName(_ key: String) -> String {
         if let a = codeHostAccounts.first(where: { $0.id == key }) { return a.displayName }
+        if let c = config.customSources.first(where: { $0.sourceID == key }) { return c.name }
         switch key {
         case "jira": return "Jira"
         case "code": return "GitLab / GitHub"
@@ -454,6 +467,9 @@ final class AppModel {
             do {
                 let text = try await assistant.morningBrief()
                 workBrief = (text, Date())
+                if config.brain.writeDaily {
+                    writeToBrain("work brief") { try $0.writeDailySection("work-brief", heading: "Work brief", markdown: text) }
+                }
                 if notify {
                     let e = AppEvent(id: "brief.work:\(Dates.iso(Date()))", category: .workBriefReady,
                                      title: "Your work brief is ready", body: String(text.prefix(140)), scope: "brief")

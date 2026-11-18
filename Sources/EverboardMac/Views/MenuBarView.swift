@@ -123,6 +123,8 @@ struct EventRow: View {
         case .newsMajor: return "bolt.fill"
         case .newsFollow: return "binoculars"
         case .reportReady: return "doc.text"
+        case .customNew: return "tray.and.arrow.down"
+        case .customStatus: return "arrow.triangle.2.circlepath"
         }
     }
 

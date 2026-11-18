@@ -10,12 +10,14 @@ struct ReportsView: View {
         VStack(spacing: 0) {
             HStack {
                 Picker("", selection: $model.reportsTab) {
+                    Text("Radar").tag("radar")
                     Text("Team health").tag("team")
+                    Text("1:1 prep").tag("oneonone")
                     Text("Daily standup").tag("standup")
                     Text("Weekly report").tag("weekly")
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 420)
+                .frame(maxWidth: 560)
                 Spacer()
                 if let err = model.reportError {
                     Label(err, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red).lineLimit(1)
@@ -24,6 +26,8 @@ struct ReportsView: View {
             .padding(10)
             Divider()
             switch model.reportsTab {
+            case "radar": TeamRadarView()
+            case "oneonone": OneOnOneView()
             case "standup":
                 ReportText(kind: "standup", title: "Daily standup", report: model.standup,
                            hint: "Yesterday / Today / Blockers from your merged and reviewed MRs, Jira activity and open work. Ready to paste into team chat.",
@@ -31,7 +35,7 @@ struct ReportsView: View {
             case "weekly":
                 ReportText(kind: "weekly", title: "Weekly report",
                            report: model.weekly,
-                           hint: "What you and your reportees shipped this week, grouped by theme, plus risks — written for your manager. Auto-generates \(weekdayName(model.config.weeklyReportWeekday)) at \(model.config.weeklyReportTime).",
+                           hint: "A draft of what you and your reportees shipped this week, grouped by theme, plus risks, for your manager. Never sent automatically. Auto-generates \(weekdayName(model.config.weeklyReportWeekday)) at \(model.config.weeklyReportTime).",
                            generate: { model.generateWeekly() })
             default:
                 TeamHealthView()

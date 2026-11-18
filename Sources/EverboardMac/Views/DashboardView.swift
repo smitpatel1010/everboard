@@ -38,6 +38,8 @@ struct DashboardView: View {
         .sheet(item: $model.aiPanel) { panel in
             AIPanelSheet(panel: panel).environment(model).environment(\.refLinker, model.refLinker)
         }
+        .sheet(item: Bindable(AgentCenter.shared).pending) { plan in AgentConfirmSheet(plan: plan) }
+        .sheet(item: Bindable(AgentCenter.shared).presented) { p in AgentRunSheet(id: p.id) }
         .environment(\.refLinker, model.refLinker)
     }
 
@@ -58,6 +60,14 @@ struct DashboardView: View {
                 Label("Work Brief", systemImage: "sun.max").tag(SidebarItem.workBrief)
                 Label("Team & Reports", systemImage: "person.3").tag(SidebarItem.reports)
             }
+            if !model.config.customSources.isEmpty {
+                Section("Feeds") {
+                    ForEach(model.config.customSources) { c in
+                        Label(c.name, systemImage: c.kind == .folder ? "folder" : "terminal")
+                            .badge(model.items.custom[c.id]?.count ?? 0).tag(SidebarItem.feed(c.id))
+                    }
+                }
+            }
             if !model.config.webPanels.isEmpty {
                 Section("Web") {
                     ForEach(model.config.webPanels) { p in
@@ -70,6 +80,8 @@ struct DashboardView: View {
             }
             Section {
                 Label("AI Activity", systemImage: "lock.shield").tag(SidebarItem.aiActivity)
+                Label("Agent Runs", systemImage: "terminal")
+                    .badge(AgentCenter.shared.live.values.filter { $0.record.status == .running }.count).tag(SidebarItem.agentRuns)
                 Label("Settings", systemImage: "gearshape").tag(SidebarItem.settings)
             }
         }
@@ -102,6 +114,13 @@ struct DashboardView: View {
         case .reports: ReportsView()
         case .worldBrief: WorldBriefView()
         case .settings: SettingsView()
+        case .agentRuns: AgentRunsView()
+        case .feed(let id):
+            if let source = model.config.customSources.first(where: { $0.id == id }) {
+                CustomFeedView(source: source).id(source.id)
+            } else {
+                EmptyState(icon: "tray", title: "Source removed")
+            }
         case .web(let id):
             if let panel = model.config.webPanels.first(where: { $0.id == id }) {
                 WebPanelView(panel: panel).id(panel.id)
@@ -136,10 +155,14 @@ private struct SnapshotSidebar<Footer: View>: View {
                       Row(title: "Jira", icon: "checklist", item: .jira, badge: i.jiraAssigned.count),
                       Row(title: "Work Brief", icon: "sun.max", item: .workBrief, badge: 0),
                       Row(title: "Team & Reports", icon: "person.3", item: .reports, badge: 0)]),
+            ("Feeds", model.config.customSources.map { c in
+                Row(title: c.name, icon: c.kind == .folder ? "folder" : "terminal", item: .feed(c.id), badge: i.custom[c.id]?.count ?? 0)
+            }),
             ("Personal", [Row(title: "World & Tech", icon: "globe", item: .worldBrief, badge: 0)]),
             (nil, [Row(title: "AI Activity", icon: "lock.shield", item: .aiActivity, badge: 0),
+                   Row(title: "Agent Runs", icon: "terminal", item: .agentRuns, badge: 0),
                    Row(title: "Settings", icon: "gearshape", item: .settings, badge: 0)]),
-        ]
+        ].filter { !$0.1.isEmpty }
     }
 
     var body: some View {
@@ -245,6 +268,7 @@ struct InboxView: View {
         if let key = Notifier.jiraKey(in: e), e.category.source == "jira" {
             Button("AI digest of \(key)") { model.digest(jiraKey: key, url: e.url) }
         }
+        if let item = model.item(withId: e.itemId) { AgentActionItems(item: item) }
         Divider()
         if let itemId = e.itemId {
             if model.config.isMuted(itemId) {

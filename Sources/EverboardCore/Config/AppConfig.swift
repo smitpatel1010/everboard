@@ -119,6 +119,22 @@ public struct AppConfig: Codable, Equatable, Sendable {
     /// Days to keep the AI activity log (exact prompts and replies). 0 = don't keep one.
     public var aiLogDays = 14
 
+    // Agent actions: your own CLI commands, run on an item when you click them.
+    public var agentActions: [AgentAction] = []
+    /// Project path ("group/app", "owner/repo", or just "app") → local checkout, for `{repoPath}`.
+    public var repoPaths: [String: String] = [:]
+    /// Days to keep agent run history (with output).
+    public var agentRunDays = 30
+
+    /// Feeds added without code: commands that print JSON, folders of markdown notes.
+    public var customSources: [CustomSourceConfig] = []
+
+    /// Markdown "brain" folder (e.g. an Obsidian vault) for digests, 1:1 prep and agent runs.
+    public var brain = BrainSettings()
+
+    /// Team radar: an open MR/PR older than this many days counts as aging.
+    public var teamAgingDays: Double = 3
+
     public init() {}
 
     public static let defaultUrgent = [
@@ -176,6 +192,11 @@ public struct AppConfig: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = AppConfig()
         func v<T: Decodable>(_ k: CodingKeys, _ fallback: T) -> T { (try? c.decodeIfPresent(T.self, forKey: k)) ?? fallback }
+        // One bad entry in a hand-edited list drops that entry, not the whole list.
+        func lossy<T: Decodable>(_ k: CodingKeys, _ fallback: [T]) -> [T] {
+            guard let list = (try? c.decodeIfPresent([Lossy<T>].self, forKey: k)) ?? nil else { return fallback }
+            return list.compactMap { $0.value }
+        }
         reportees = v(.reportees, d.reportees)
         jiraFilters = v(.jiraFilters, d.jiraFilters)
         pinnedProjects = v(.pinnedProjects, d.pinnedProjects)
@@ -220,6 +241,12 @@ public struct AppConfig: Codable, Equatable, Sendable {
         aiSendJiraText = v(.aiSendJiraText, d.aiSendJiraText)
         aiSendMeetingNotes = v(.aiSendMeetingNotes, d.aiSendMeetingNotes)
         aiLogDays = v(.aiLogDays, d.aiLogDays)
+        agentActions = lossy(.agentActions, d.agentActions)
+        repoPaths = v(.repoPaths, d.repoPaths)
+        agentRunDays = v(.agentRunDays, d.agentRunDays)
+        customSources = lossy(.customSources, d.customSources)
+        brain = v(.brain, d.brain)
+        teamAgingDays = v(.teamAgingDays, d.teamAgingDays)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -234,5 +261,7 @@ public struct AppConfig: Codable, Equatable, Sendable {
         case jiraShowDone, mrShowDraftReviews
         case aiWorkEnabled, aiRedactSecrets, aiRedactEmails, aiPseudonymizePeople, aiMaskedTerms
         case aiSendDiffs, aiSendJiraText, aiSendMeetingNotes, aiLogDays
+        case agentActions, repoPaths, agentRunDays, customSources, brain, teamAgingDays
     }
 }
+

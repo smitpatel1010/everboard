@@ -75,6 +75,15 @@ public final class Store: Sendable {
             CREATE INDEX ai_log_ts ON ai_log(ts);
             """)
         }
+        m.registerMigration("v5-agent-runs") { db in
+            try db.execute(sql: """
+            CREATE TABLE agent_runs (
+                id TEXT PRIMARY KEY, ts REAL NOT NULL, finishedAt REAL, actionId TEXT NOT NULL, actionName TEXT NOT NULL,
+                itemId TEXT, itemTitle TEXT NOT NULL, itemRef TEXT NOT NULL, itemUrl TEXT, command TEXT NOT NULL,
+                workingDirectory TEXT NOT NULL, status TEXT NOT NULL, exitCode INTEGER, output TEXT NOT NULL, notePath TEXT);
+            CREATE INDEX agent_runs_ts ON agent_runs(ts);
+            """)
+        }
         return m
     }
 
@@ -144,9 +153,10 @@ public final class Store: Sendable {
     }
 
     /// Drop stale rows so the database stays small.
-    public func prune(now: Date = Date(), aiLogDays: Int = 14) async throws {
+    public func prune(now: Date = Date(), aiLogDays: Int = 14, agentRunDays: Int = 30) async throws {
         try await db.write { db in
             let t = now.timeIntervalSince1970
+            try db.execute(sql: "DELETE FROM agent_runs WHERE ts < ?", arguments: [t - Double(max(agentRunDays, 0)) * 86400])
             try db.execute(sql: "DELETE FROM ai_log WHERE ts < ?", arguments: [t - Double(max(aiLogDays, 0)) * 86400])
             try db.execute(sql: "DELETE FROM items WHERE present = 0 AND lastSeen < ?", arguments: [t - 30 * 86400])
             try db.execute(sql: "DELETE FROM items WHERE scope LIKE '%.pipelines.%' AND lastSeen < ?", arguments: [t - 14 * 86400])

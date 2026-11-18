@@ -72,7 +72,7 @@ struct UsageSettings: View {
             "work.brief": "Work brief", "mr.summary": "MR summary", "jira.digest": "Jira digest",
             "news.brief": "World & Tech brief", "news.deeper": "Go deeper", "news.preferences": "Learning from feedback",
             "news.ask": "Ask the news", "report.standup": "Daily standup", "report.weekly": "Weekly report",
-            "team.commentary": "Team health AI read", "meeting.prep": "Meeting prep", "settings.test": "Test claude",
+            "team.commentary": "Team health AI read", "team.oneonone": "1:1 prep", "meeting.prep": "Meeting prep", "settings.test": "Test claude",
         ][key] ?? key
     }
 

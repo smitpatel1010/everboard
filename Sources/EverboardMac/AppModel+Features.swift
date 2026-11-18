@@ -31,7 +31,13 @@ extension AppModel {
     }
 
     func generateStandup() {
-        runReport("standup") { self.standup = (try await self.reports.standup(), Date()) }
+        runReport("standup") {
+            let text = try await self.reports.standup()
+            self.standup = (text, Date())
+            if self.config.brain.writeDaily {
+                self.writeToBrain("standup") { try $0.writeDailySection("standup", heading: "Standup (draft)", markdown: text) }
+            }
+        }
     }
 
     func generateWeekly(notify: Bool = false) {
@@ -40,6 +46,14 @@ extension AppModel {
             self.weekly = (text, Date())
             if !self.config.reportees.isEmpty {
                 self.teamHealth = try? await self.reports.teamHealth(reportees: self.config.reportees)
+                await TeamDesk.shared.refreshRadar()
+            }
+            if self.config.brain.writeWeekly {
+                let digest = TeamDesk.shared.digest(wikiLinks: true)
+                self.writeToBrain("weekly report") { b in
+                    try b.writeWeeklySection("weekly-report", heading: "Weekly report (draft)", markdown: text)
+                    if let digest { try b.writeWeeklySection("team-digest", heading: "Team digest", markdown: digest) }
+                }
             }
             if notify {
                 let e = AppEvent(id: "report.weekly:\(Dates.iso(Date()))", category: .reportReady,

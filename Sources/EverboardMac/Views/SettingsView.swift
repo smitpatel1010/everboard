@@ -13,6 +13,9 @@ struct SettingsView: View {
             JiraSettings().tabItem { Text("Jira") }.tag("jira")
             NotificationSettings().tabItem { Text("Notifications") }.tag("notifications")
             WebPanelSettings().tabItem { Text("Web panels") }.tag("web")
+            AgentSettings().tabItem { Text("Agents") }.tag("agents")
+            SourceSettings().tabItem { Text("Sources") }.tag("sources")
+            BrainSettingsView().tabItem { Text("Brain") }.tag("brain")
             NewsSettings().tabItem { Text("News") }.tag("news")
             PrivacySettings().tabItem { Text("AI privacy") }.tag("privacy")
             UsageSettings().tabItem { Text("AI usage") }.tag("usage")
@@ -255,6 +258,10 @@ struct TeamSettings: View {
                 }
             } footer: {
                 Text("Hosts only match public emails for normal tokens; if a lookup fails, type the username. The GitLab username is used on every GitLab account, the GitHub one on every GitHub account.")
+            }
+            Section("Team radar") {
+                Stepper("An open MR/PR is aging after \(Int(model.config.teamAgingDays)) day\(model.config.teamAgingDays == 1 ? "" : "s")",
+                        value: configBinding(model, \.teamAgingDays), in: 1...30)
             }
         }
         .formStyle(.grouped)

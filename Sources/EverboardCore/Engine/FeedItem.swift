@@ -51,6 +51,8 @@ public enum EventCategory: String, CaseIterable, Codable, Sendable {
     case newsMajor = "news.major"
     case newsFollow = "news.follow"
     case reportReady = "report.ready"
+    case customNew = "custom.new"
+    case customStatus = "custom.status"
 
     public var label: String {
         switch self {
@@ -70,6 +72,8 @@ public enum EventCategory: String, CaseIterable, Codable, Sendable {
         case .newsMajor: return "Major story alert"
         case .newsFollow: return "Update on a story I follow"
         case .reportReady: return "Weekly report / team health ready"
+        case .customNew: return "New item in a custom feed"
+        case .customStatus: return "Status change in a custom feed"
         }
     }
 
@@ -81,6 +85,7 @@ public enum EventCategory: String, CaseIterable, Codable, Sendable {
         case .jiraAssigned, .jiraComment, .jiraMention, .jiraFilterNew, .jiraFilterStatus: return "jira"
         case .workBriefReady, .reportReady: return "brief"
         case .newsBriefReady, .newsMajor, .newsFollow: return "news"
+        case .customNew, .customStatus: return "custom"
         }
     }
 }

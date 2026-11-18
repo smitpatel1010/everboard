@@ -38,6 +38,8 @@ enum DemoData {
         c.jiraFilters = [JiraFilterConfig(id: "10042", name: "Sprint board")]
         c.pinnedProjects = ["acme/payments-api", "https://github.com/acme-oss/sdk-swift"]
         c.launchAtLogin = false
+        c.agentActions = Array(AgentAction.examples.prefix(3))
+        c.customSources = [CustomSourceConfig(id: "deploys", name: "Deploys", kind: .command, command: "~/bin/deploys --json")]
         return c
     }
 
@@ -168,6 +170,7 @@ enum DemoData {
             }
             // A fixed sample brief: demo mode never reads your real news data.
             try await store.saveBrief(try JSONDecoder.everboard.decode(NewsBrief.self, from: Data(sampleBriefJSON(now).utf8)))
+            try await seedExtensions(store, now: now)
         } catch {
             Log.info("demo seed failed: \(error)")
         }
@@ -217,6 +220,24 @@ enum DemoData {
         """
     }
 
+    /// A custom feed and an agent run, so those screens have something to show.
+    static func seedExtensions(_ store: Store, now: Date) async throws {
+        let deploys = [("web", "success", 0.4), ("payments-api", "running", 0.1), ("ledger", "failed", 2.5)].map { name, status, hours in
+            FeedItem(id: "custom.deploys:\(name)", source: "custom", kind: "deploy", title: "Deploy \(name) to production",
+                     subtitle: "Deploys", url: "https://deploys.example/\(name)", status: status, author: "release-bot",
+                     createdAt: now.addingTimeInterval(-hours * 3600), updatedAt: now.addingTimeInterval(-hours * 3600),
+                     attrs: ["feed": "deploys", "feedName": "Deploys"])
+        }
+        try await store.apply(ScopeResult(scope: "custom.deploys.items", mode: .replace, items: deploys), events: [])
+        let review = AgentAction.examples[0]
+        try await store.saveAgentRun(AgentRun(
+            ts: now.addingTimeInterval(-40 * 60), finishedAt: now.addingTimeInterval(-37 * 60), actionId: review.id, actionName: review.name,
+            itemId: "gitlab.mr:42:305", itemTitle: "Cache tenant config in Redis", itemRef: "acme/payments-api!305",
+            itemUrl: "https://gitlab.example/mr/305", command: "claude -p \"Review the merge/pull request at https://gitlab.example/mr/305 …\"",
+            workingDirectory: "~/Library/Caches/Everboard/agent-work", status: .succeeded, exitCode: 0,
+            output: "Verdict: approve with nits\n\n1. TTL is hard-coded to 300s; read it from config.\n2. No test for a cache miss after eviction.\n"))
+    }
+
     static func seedCalendar(_ calendar: CalendarService) {
         let cal = Calendar.current
         func at(_ h: Int, _ m: Int) -> Date { cal.date(bySettingHour: h, minute: m, second: 0, of: Date())! }
@@ -245,13 +266,22 @@ enum DemoData {
         window.backgroundColor = .windowBackgroundColor
         window.orderFront(nil)
         let screens: [(String, SidebarItem)] = [("inbox", .inbox), ("home", .home), ("aiactivity", .aiActivity), ("mrs", .mergeRequests), ("pipelines", .pipelines),
-                                                ("jira", .jira), ("workbrief", .workBrief), ("reports", .reports), ("world", .worldBrief), ("settings", .settings)]
-        for (name, item) in screens + [("usage", .settings), ("privacy", .settings), ("accounts", .settings), ("team", .settings)] {
-            model.settingsTab = ["usage", "privacy", "accounts", "team"].contains(name) ? name : "general"
+                                                ("jira", .jira), ("workbrief", .workBrief), ("reports", .reports), ("world", .worldBrief), ("settings", .settings),
+                                                ("agentruns", .agentRuns), ("feed", .feed("deploys"))]
+        let settingsTabs = ["usage", "privacy", "accounts", "team", "agents", "sources", "brain"]
+        for (name, item) in screens + settingsTabs.map({ ($0, SidebarItem.settings) }) {
+            model.settingsTab = settingsTabs.contains(name) ? name : "general"
             model.selection = item
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             save(window.contentView!, to: dir.appendingPathComponent("\(name).png"))
         }
+        for tab in ["radar", "oneonone"] {
+            model.reportsTab = tab
+            model.selection = .reports
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            save(window.contentView!, to: dir.appendingPathComponent("\(tab).png"))
+        }
+        model.reportsTab = "team"
         let menu = NSWindow(contentRect: NSRect(x: -4000, y: 0, width: 380, height: 520), styleMask: [.borderless], backing: .buffered, defer: false)
         let host = NSHostingView(rootView: MenuBarView().environment(model).background(Color(nsColor: .windowBackgroundColor)))
         menu.contentView = host

@@ -129,6 +129,7 @@ struct MRRow: View {
             if item.kind != "mr.mine" { Button("Approve…") { confirmApprove = true } }
             if item["pipelineStatus"] == "failed" { Button("Retry pipeline") { model.retryPipeline(item) } }
             Button("Comment…") { commenting = true }
+            AgentActionItems(item: item)
             Divider()
             Button(model.config.isMuted(item.id) ? "Unmute" : "Mute notifications for this \(item.source == "github" ? "PR" : "MR")") {
                 if model.config.isMuted(item.id) { model.unmute(itemId: item.id) } else { model.mute(itemId: item.id, for: nil) }
@@ -170,6 +171,7 @@ struct TodoRow: View {
         .contextMenu {
             Button("Open in browser") { model.open(item.url) }
             Button("Mark done") { model.markTodoDone(item) }
+            AgentActionItems(item: item)
         }
     }
 }
@@ -199,13 +201,14 @@ struct PipelinesView: View {
                     TableColumn("Updated") { AgeText(date: $0.updatedAt) }.width(70)
                     TableColumn("") { p in
                         HStack(spacing: 6) {
+                            AgentActionsButton(item: p)
                             if p.status == "failed" || p.status == "canceled" {
                                 Button { model.retryPipeline(p) } label: { Image(systemName: "arrow.counterclockwise") }
                                     .buttonStyle(.borderless).help("Retry pipeline")
                             }
                             Button { model.open(p.url) } label: { Image(systemName: "arrow.up.right.square") }.buttonStyle(.borderless)
                         }
-                    }.width(56)
+                    }.width(80)
                 }
             }
         }
@@ -263,12 +266,13 @@ struct JiraView: View {
                     TableColumn("") { i in
                         HStack(spacing: 6) {
                             JiraActionsMenu(item: i)
+                            AgentActionsButton(item: i)
                             Button { model.digest(jiraKey: i["key"] ?? "", title: i.title, url: i.url) } label: { Image(systemName: "sparkles") }
                                 .buttonStyle(.borderless).help("AI digest")
                             Button { model.open(i.url) } label: { Image(systemName: "arrow.up.right.square") }
                                 .buttonStyle(.borderless).help("Open in Jira")
                         }
-                    }.width(84)
+                    }.width(108)
                 }
             }
         }
@@ -360,7 +364,13 @@ struct CommentSheet: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
     let send: (String) -> Void
-    @State private var text = ""
+    @State private var text: String
+
+    init(title: String, initial: String = "", send: @escaping (String) -> Void) {
+        self.title = title
+        self.send = send
+        _text = State(initialValue: initial)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
