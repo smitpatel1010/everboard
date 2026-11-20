@@ -26,7 +26,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: unhealthy ? "square.grid.2x2.fill" : "square.grid.2x2")
+            Image(systemName: unhealthy ? "square.stack.3d.up.fill" : "square.stack.3d.up")
             if unread > 0 { Text("\(min(unread, 99))") }
             if let meeting { Text("· \(meeting)") }
         }

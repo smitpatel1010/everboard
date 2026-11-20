@@ -53,49 +53,48 @@ extension CGContext {
     }
 }
 
-// The macOS grid grown into a tiny dashboard: a feed, a usage ring and a lit tile for what needs attention.
+/// One isometric layer: a rhombus with softly rounded corners, centered at `center`.
+func layer(_ center: CGPoint, width: CGFloat, height: CGFloat, radius: CGFloat = 46) -> CGPath {
+    let top = CGPoint(x: center.x, y: center.y - height / 2), right = CGPoint(x: center.x + width / 2, y: center.y)
+    let bottom = CGPoint(x: center.x, y: center.y + height / 2), left = CGPoint(x: center.x - width / 2, y: center.y)
+    let p = CGMutablePath()
+    p.move(to: CGPoint(x: (top.x + left.x) / 2, y: (top.y + left.y) / 2))
+    p.addArc(tangent1End: top, tangent2End: right, radius: radius)
+    p.addArc(tangent1End: right, tangent2End: bottom, radius: radius)
+    p.addArc(tangent1End: bottom, tangent2End: left, radius: radius)
+    p.addArc(tangent1End: left, tangent2End: top, radius: radius)
+    p.closeSubpath()
+    return p
+}
+
+// The app's mark: three stacked boards (your sources, layered into one view) on the indigo-to-violet accent.
 func draw(_ c: CGContext, _ k: CGFloat) {
     let tile = squircle(body)
-    c.shadowed(k, y: 12, blur: 28, hex(0x000000, 0.35)) { c.fill(tile, hex(0x1E7BE8)) }
+    c.shadowed(k, y: 12, blur: 28, hex(0x000000, 0.35)) { c.fill(tile, hex(0x6B5CFA)) }
     c.saveGState(); c.addPath(tile); c.clip()
-    c.drawLinearGradient(CGGradient(colorsSpace: sRGB, colors: [hex(0x19C2B0), hex(0x1E7BE8), hex(0x2D3BC9)] as CFArray, locations: nil)!,
-                         start: CGPoint(x: 160, y: body.minY), end: CGPoint(x: 860, y: body.maxY),
+    c.drawLinearGradient(CGGradient(colorsSpace: sRGB, colors: [hex(0x7C6CFF), hex(0x6A4FF0), hex(0xA154EA)] as CFArray, locations: [0, 0.5, 1])!,
+                         start: CGPoint(x: body.minX, y: body.minY), end: CGPoint(x: body.maxX, y: body.maxY),
                          options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
     c.restoreGState()
-    c.fill(tile, glow: 0xFFFFFF, 0.25, at: CGPoint(x: 300, y: 160), radius: 520)
+    c.fill(tile, glow: 0xFFFFFF, 0.22, at: CGPoint(x: 290, y: 170), radius: 560)
+    c.fill(tile, glow: 0xFF7AC6, 0.20, at: CGPoint(x: 860, y: 880), radius: 420)
     // Top-lit rim, like light catching the edge of glass.
     c.saveGState(); c.addPath(tile); c.clip()
     c.addPath(tile); c.setLineWidth(10); c.replacePathWithStrokedPath(); c.clip()
-    c.fill(tile, vertical: [hex(0xffffff, 0.35), hex(0xffffff, 0.04)], from: body.minY, to: body.maxY)
+    c.fill(tile, vertical: [hex(0xffffff, 0.38), hex(0xffffff, 0.04)], from: body.minY, to: body.maxY)
     c.restoreGState()
 
-    // Bento: a tall feed tile on the left, a usage tile and a lit tile stacked on the right.
-    let inner = body.insetBy(dx: 96, dy: 96), gap: CGFloat = 44, colW = (inner.width - gap) / 2
-    let feed = CGRect(x: inner.minX, y: inner.minY, width: colW, height: inner.height)
-    let usage = CGRect(x: inner.minX + colW + gap, y: inner.minY, width: colW, height: (inner.height - gap) / 2)
-    let lit = CGRect(x: usage.minX, y: usage.maxY + gap, width: colW, height: usage.height)
-    func card(_ r: CGRect) -> CGPath { CGPath(roundedRect: r, cornerWidth: 56, cornerHeight: 56, transform: nil) }
-    for r in [feed, usage] {
-        c.shadowed(k, y: 10, blur: 24, hex(0x0A1A5C, 0.35)) { c.fill(card(r), hex(0xffffff, 0.95)) }
+    // Three layers, back to front; the front one is solid white.
+    let w: CGFloat = 520, h: CGFloat = 300, step: CGFloat = 112
+    let centerY: CGFloat = 512
+    let layers: [(CGFloat, CGFloat)] = [(centerY + step, 0.42), (centerY, 0.68), (centerY - step, 1.0)]
+    for (y, alpha) in layers {
+        let path = layer(CGPoint(x: 512, y: y), width: w, height: h)
+        c.shadowed(k, y: 14, blur: 26, hex(0x2A1580, 0.35)) { c.fill(path, hex(0xffffff, alpha)) }
     }
-    c.shadowed(k, y: 10, blur: 24, hex(0xB34700, 0.45)) { c.fill(card(lit), hex(0xFFB020)) }
-    c.fill(card(lit), vertical: [hex(0xFFD15A), hex(0xFF9F1C)], from: lit.minY, to: lit.maxY)
-
-    for i in 0..<3 {
-        let y = feed.minY + 58 + CGFloat(i) * 128, textW = feed.width - 152
-        c.fill(CGPath(ellipseIn: CGRect(x: feed.minX + 40, y: y, width: 56, height: 56), transform: nil),
-               i == 0 ? hex(0xFF9F1C) : hex(0x1E7BE8, 0.85))
-        c.fill(pill(CGRect(x: feed.minX + 112, y: y + 6, width: textW, height: 22)), hex(0x1E3A8A, 0.8))
-        c.fill(pill(CGRect(x: feed.minX + 112, y: y + 38, width: textW * 0.65, height: 18)), hex(0x1E3A8A, 0.25))
-    }
-
-    let center = CGPoint(x: usage.midX, y: usage.midY)
-    c.saveGState(); c.setLineWidth(30); c.setLineCap(.round)
-    c.setStrokeColor(hex(0x1E7BE8, 0.18)); c.addArc(center: center, radius: 72, startAngle: 0, endAngle: 2 * .pi, clockwise: false); c.strokePath()
-    c.setStrokeColor(hex(0x19C2B0)); c.addArc(center: center, radius: 72, startAngle: -.pi / 2, endAngle: 0.95 * .pi, clockwise: false); c.strokePath()
-    c.restoreGState()
-
-    c.fill(CGPath(ellipseIn: CGRect(x: lit.midX - 40, y: lit.midY - 40, width: 80, height: 80), transform: nil), hex(0xffffff))
+    // A small lit dot on the front layer: something needs you.
+    let dot = CGPath(ellipseIn: CGRect(x: 512 - 34, y: centerY - step - 34, width: 68, height: 68), transform: nil)
+    c.fill(dot, hex(0x7C5CFA))
 }
 
 func render(_ px: Int) -> Data {
