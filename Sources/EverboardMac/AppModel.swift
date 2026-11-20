@@ -70,7 +70,10 @@ final class AppModel {
     var latestArticles: [Article] = []
 
     var aiPanel: AIPanel?
+    /// The database couldn't open at launch (the app runs on an in-memory copy). Lasts for the session.
     var storeError: String?
+    /// The last dashboard reload failed. Cleared by the next successful reload.
+    var reloadError: String?
     /// Links MR refs and Jira keys in AI output; rebuilt from your data after each reload.
     var refLinker = RefLinker()
     /// Your name from a code host, for the Home greeting.
@@ -310,9 +313,12 @@ final class AppModel {
             if myName == nil { myName = await CodeHosts.cachedName(store: store, accounts: accounts) }
             events = try await store.events(limit: 300)
             unread = try await store.unreadCount()
+            reloadError = nil
             NSApp.dockTile.badgeLabel = unread > 0 ? "\(min(unread, 99))" : nil
         } catch {
-            storeError = error.localizedDescription
+            // A refresh cancels the polling task, sometimes mid-reload; the restarted poll reloads, so that's not a failure.
+            if error is CancellationError { return }
+            reloadError = error.localizedDescription
         }
     }
 

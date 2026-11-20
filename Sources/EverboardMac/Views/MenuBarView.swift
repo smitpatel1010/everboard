@@ -119,7 +119,7 @@ struct MenuBarView: View {
 
     var attention: String? {
         if !model.hasCodeHost && !model.secrets.hasJira { return "Add your tokens in Settings → Accounts" }
-        if let e = model.storeError { return e }
+        if let e = model.storeError ?? model.reloadError { return e }
         return nil
     }
 
