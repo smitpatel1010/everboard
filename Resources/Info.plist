@@ -16,7 +16,7 @@
     <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSCalendarsFullAccessUsageDescription</key><string>Everboard shows your upcoming meetings, join links and meeting prep, and keeps notifications quiet while you're in a meeting.</string>
-    <key>NSMicrophoneUsageDescription</key><string>Everboard listens only while you hold the mic button or press ⌥⇧Space, so you can talk to your agents.</string>
+    <key>NSMicrophoneUsageDescription</key><string>Everboard listens only after you press the mic button or ⌥⇧Space, so you can talk to your agents.</string>
     <key>NSSpeechRecognitionUsageDescription</key><string>Everboard turns what you say to the Assistant into text with Apple's speech recognition, on this Mac when it can.</string>
     <key>NSCalendarsUsageDescription</key><string>Everboard shows your upcoming meetings and keeps notifications quiet during them.</string>
     <key>NSHumanReadableCopyright</key><string>Everboard — MIT licensed.</string>

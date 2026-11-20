@@ -34,7 +34,8 @@ enum DemoData {
     static var config: AppConfig {
         var c = AppConfig()
         c.reportees = [Reportee(email: "asha@example.com", username: "asha", githubUsername: "asha-k", name: "Asha K"),
-                       Reportee(email: "vikram@example.com", username: "vik", name: "Vikram P")]
+                       Reportee(email: "vikram@example.com", username: "vik", name: "Vikram P"),
+                       Reportee(email: "rahul@example.com", username: "rahul", name: "Rahul S")]
         c.jiraFilters = [JiraFilterConfig(id: "10042", name: "Sprint board")]
         c.pinnedProjects = ["acme/payments-api", "https://github.com/acme-oss/sdk-swift"]
         c.launchAtLogin = false

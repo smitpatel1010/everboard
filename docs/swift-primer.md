@@ -156,10 +156,9 @@ That's the whole "framework" you need to follow.
 - The dashboard is an AppKit `NSWindow` hosting SwiftUI (`NSHostingView`). That lets notifications open it from anywhere.
 - AppKit is the older macOS UI framework. Everboard uses it where SwiftUI has no equivalent: panels, the activation policy, opening URLs.
 
-### Lists, tables, sheets
+### Lists and sheets
 ```swift
-List(items) { MRRow(item: $0) }                              // scrolling list
-Table(sorted) { TableColumn("Status") { StatusPill(text: $0.status ?? "?") } }
+ScrollView { LazyVStack { ForEach(items) { Row(item: $0) } } } // scrolling list, rows built on demand
 .sheet(item: $model.aiPanel) { AIPanelSheet(panel: $0) }     // modal shown when non-nil
 .contextMenu { Button("Approve…") { … } }                    // right-click menu
 ```

@@ -6,7 +6,7 @@ I built it as the one app I keep open all day: one place to see my own work, my 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/home.png">
-  <img alt="Everboard home: greeting, review queue, failed pipelines, Jira, today's meetings and team status" src="docs/screenshots/light/home.png">
+  <img alt="Everboard home: sidebar, ask bar, counts, what needs you, the work brief, meetings and team" src="docs/screenshots/light/home.png">
 </picture>
 
 <sub>Screenshots use the built-in demo data (`--demo`), not real accounts.</sub>
@@ -22,8 +22,8 @@ I built it as the one app I keep open all day: one place to see my own work, my 
 - **Notifications that respect your focus:** CI failures, new changes from your team, mentions and Jira updates. Low-priority ones are batched, and alerts stay quiet during meetings.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/mrs.png">
-  <img alt="Merge and pull requests from GitLab and GitHub in one review queue" src="docs/screenshots/light/mrs.png">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/peek.png">
+  <img alt="Merge and pull requests from GitLab and GitHub in one keyboard-first list, with a peek panel for details and actions" src="docs/screenshots/light/peek.png">
 </picture>
 
 ### Team health and reports, written for you
@@ -41,6 +41,11 @@ Per-person metrics (cycle time, change size, stuck work, reviews given) and a **
 - **Agent actions:** right-click any MR, PR, pipeline or issue to run your own CLI agent on it, such as `claude -p "/deep-review {url}"` or `cursor-agent …`. You see the command first and the output streams in. Every run is kept, and nothing is ever posted for you.
 - **Feeds without code:** point Everboard at a script that prints JSON, or a folder of markdown notes, and it becomes a feed with notifications.
 - **A markdown brain:** optionally write the work brief, team digest, 1:1 prep, weekly draft and agent runs into an Obsidian-style folder (frontmatter, `[[links]]`) without ever touching what you wrote yourself.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/assistant-panel.png">
+  <img alt="The Assistant's floating panel: ask what needs you, or tell an agent what to run" src="docs/screenshots/light/assistant-panel.png" width="600">
+</picture>
 
 ### A morning brief that tells you what matters
 
@@ -78,10 +83,10 @@ A personal **World & Tech brief**: Claude picks the stories that matter from wor
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dark/menubar.png">
-  <img alt="Menu bar popover with meetings and recent notifications" src="docs/screenshots/light/menubar.png" width="360">
+  <img alt="Menu bar popover with the ask bar, counts, meetings and recent notifications" src="docs/screenshots/light/menubar.png" width="360">
 </picture>
 
-The **menu bar** shows your next meetings and latest notifications at a glance.
+The **menu bar** shows what's waiting, your next meetings and the latest notifications, with the Assistant one click away.
 
 </td>
 </tr>

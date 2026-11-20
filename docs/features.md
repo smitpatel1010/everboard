@@ -2,17 +2,19 @@
 
 ## Menu bar
 
-The grid icon shows:
+The stacked-layers icon shows:
 - your **unread count**
 - your **next meeting**, if it starts within the hour (e.g. `· in 12m: Standup`)
 - a filled icon when a source is unhealthy, such as the VPN being down or a token having expired
 
 Clicking the icon opens a popover with:
-- a status chip for each source
+- a health dot for each source, plus Refresh, Open dashboard and Settings
+- **Ask your agents** (⌥⇧Space), which opens the Assistant's floating panel
+- counts for reviews, failed pipelines, Jira and unread; click one to jump there
 - today's upcoming meetings, each with **Join** and ✨ **Prep** buttons
-- the 8 latest events; click one to open it
-- shortcuts to the Dashboard, Work brief, Reports and World & Tech, plus **Search ⌥Space**
+- the 6 latest events; click one to open it
 - "N batched notifications — show now" when some are being held
+- links to the Work brief, Team and **Search ⌥Space**
 
 ## Dashboard window
 
@@ -20,7 +22,7 @@ Open it from the menu, from the Dock while it's open, by launching the app again
 
 **Home.** A greeting with what's waiting and your next meeting; an **ask bar** for the Assistant with a few suggestions; counts for reviews, your open changes, failed pipelines, Jira and unread (click one to jump there); then **Needs you**, the work brief, recent agent runs and activity, with today's meetings, your team, Jira, news and AI use on the side. On narrow windows the two columns stack.
 
-**Menu bar and Dock.** The menu-bar popover has the ask bar, the four counts, today's meetings, the latest activity and quick links. While the dashboard is open the Dock icon shows your unread count, and right-clicking it offers Ask, Inbox, Reviews, failed Pipelines, Work brief, Team, Search and Refresh.
+**Dock.** While the dashboard is open the Dock icon shows your unread count, and right-clicking it offers Ask, Inbox, Reviews, failed Pipelines, Work brief, Team, Search and Refresh.
 
 **Layout.** A sidebar on the left (Home, Inbox, Assistant; Work; Team; Feeds; Personal; Agents; Settings at the bottom, with a dot per source showing its health), the page in the middle, and a **peek panel** on the right for whatever you select. ⌘\ collapses the sidebar to icons. The search box and mic at the top of the sidebar open the command palette and the Assistant.
 
@@ -94,7 +96,7 @@ MR references (`group/project!123`, and `!123` when it matches one known MR) and
 
 ## Agent actions
 
-Run your own CLI agent on any MR, PR, pipeline, Jira issue, to-do or feed item from its right-click menu (or the terminal button in the Pipelines and Jira tables). Each action is a command template you define in **Settings → Agents**, for example:
+Run your own CLI agent on any MR, PR, pipeline, Jira issue, to-do or feed item from its right-click menu, its peek panel, or the hover actions on its row. Each action is a command template you define in **Settings → Agents**, for example:
 
 ```sh
 claude -p "/deep-review {url}"

@@ -32,7 +32,7 @@ icon:
 	swift scripts/make-icon.swift Resources/AppIcon.icns
 
 # README screenshots from demo data (never your real accounts), light and dark.
-SHOTS := home mrs world reports workbrief palette-search menubar
+SHOTS := home peek world reports workbrief palette-search menubar assistant-panel
 screenshots:
 	scripts/build-app.sh debug
 	@for mode in light dark; do \
