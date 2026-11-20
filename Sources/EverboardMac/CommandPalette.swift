@@ -254,6 +254,14 @@ final class PaletteState {
     let model: AppModel
     let close: () -> Void
 
+    /// ⌥↩: hand the query to the Assistant in its floating panel.
+    func askAssistant() {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        close()
+        AssistantPanel.shared.show(listen: q.isEmpty)
+        if !q.isEmpty { AssistantModel.shared.handle(q, spoken: false) }
+    }
+
     var query = "" { didSet { if query != oldValue { queryChanged() } } }
     var chipScope: PaletteScope = .all
     var selection = 0
@@ -421,6 +429,7 @@ final class PaletteState {
         case kVK_DownArrow: move(1); return true
         case kVK_UpArrow: move(-1); return true
         case kVK_Return, kVK_ANSI_KeypadEnter:
+            if e.modifierFlags.contains(.option) { askAssistant(); return true }
             if actionsOpen { runAction(at: actionSelection) } else { runAction(at: cmd ? 1 : 0) }
             return true
         case kVK_Tab:
@@ -792,21 +801,22 @@ struct PaletteView: View {
         VStack(spacing: 0) {
             searchField
             scopeChips
-            Divider()
+            Rectangle().fill(Theme.hairline).frame(height: 1)
             HStack(spacing: 0) {
                 resultsList(sections, flat: flat)
                     .frame(width: Self.width * 0.52)
-                Divider()
+                Rectangle().fill(Theme.hairline).frame(width: 1)
                 PreviewPane(state: state)
                     .frame(maxWidth: .infinity)
+                    .background(Color.primary.opacity(0.025))
             }
-            Divider()
+            Rectangle().fill(Theme.hairline).frame(height: 1)
             footer
         }
         .frame(width: Self.width, height: Self.height)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.12)))
+        .background(.ultraThickMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
         .overlay(alignment: .bottomTrailing) {
             if state.actionsOpen { ActionPanel(state: state).padding(.bottom, 40).padding(.trailing, 12) }
         }
@@ -815,20 +825,32 @@ struct PaletteView: View {
 
     var searchField: some View {
         HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass").font(.title2).foregroundStyle(.secondary)
+            RoundedRectangle(cornerRadius: 7).fill(Theme.accentGradient).frame(width: 28, height: 28)
+                .overlay(Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .bold)).foregroundStyle(.white))
             if state.scope != .all && state.parsed.scope != state.chipScope {
-                Text(state.scope.title).font(.callout.weight(.semibold)).padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.2), in: RoundedRectangle(cornerRadius: 5))
+                Text(state.scope.title).font(.callout.weight(.semibold)).foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
             }
-            TextField("Search MRs, Jira, pipelines, news, meetings — or type > for commands", text: $state.query)
+            TextField("Search everything, > for commands, or ⌥↩ to ask", text: $state.query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 20))
                 .focused($focused)
             if state.remoteLoading { ProgressView().controlSize(.small) }
+            Button { state.askAssistant() } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "waveform")
+                    Text("Ask")
+                }
+                .font(.callout.weight(.medium)).foregroundStyle(Theme.accent)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Theme.accent.opacity(0.12), in: Capsule())
+            }
+            .buttonStyle(.plain).help("Ask the Assistant (⌥↩)")
         }
         .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
     }
 
     var scopeChips: some View {
@@ -836,8 +858,9 @@ struct PaletteView: View {
             ForEach(Array(PaletteScope.allCases.enumerated()), id: \.element) { i, s in
                 Button { state.setScope(s) } label: {
                     Text(s.title).font(.caption.weight(state.scope == s ? .semibold : .regular))
-                        .padding(.horizontal, 9).padding(.vertical, 4)
-                        .background(state.scope == s ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06), in: Capsule())
+                        .foregroundStyle(state.scope == s ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(state.scope == s ? Color.primary.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 7))
                 }
                 .buttonStyle(.plain)
                 .help(s == .all ? "⌘1" : "Type “\(s.prefix)\(s == .commands ? "" : " ")” or ⌘\(i + 1)")
@@ -854,9 +877,16 @@ struct PaletteView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if sections.isEmpty {
-                        VStack(spacing: 6) {
+                        VStack(spacing: 10) {
                             Image(systemName: "magnifyingglass").font(.title).foregroundStyle(.tertiary)
                             Text(state.remoteLoading ? "Searching your accounts…" : "No results").foregroundStyle(.secondary)
+                            if !state.remoteLoading && !state.query.isEmpty {
+                                Button { state.askAssistant() } label: {
+                                    Label("Ask the Assistant instead", systemImage: "waveform")
+                                }
+                                .buttonStyle(.borderedProminent).tint(Theme.accent)
+                                Text("⌥↩").font(.caption).foregroundStyle(.tertiary)
+                            }
                         }
                         .frame(maxWidth: .infinity).padding(.top, 60)
                     }
@@ -889,12 +919,12 @@ struct PaletteView: View {
                 if e.actions.count > 1 { Text("⌘↩ \(e.actions[1].title)").font(.caption).foregroundStyle(.secondary) }
             }
             Spacer()
-            Text("↑↓ move").font(.caption2).foregroundStyle(.tertiary)
-            Text("⌘K actions").font(.caption2).foregroundStyle(.secondary)
-            Text("⇧⌘C copy link").font(.caption2).foregroundStyle(.tertiary)
-            Text("esc").font(.caption2).foregroundStyle(.tertiary)
+            KeyHint(keys: "↑↓", label: "move")
+            KeyHint(keys: "⌘K", label: "actions")
+            KeyHint(keys: "⌥↩", label: "ask")
+            KeyHint(keys: "esc", label: "close")
         }
-        .padding(.horizontal, 16).padding(.vertical, 8)
+        .padding(.horizontal, 16).padding(.vertical, 9)
     }
 }
 
@@ -907,27 +937,28 @@ private struct ResultRow: View {
         HStack(spacing: 10) {
             Image(systemName: entry.icon)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(selected ? .white : entry.tint)
+                .foregroundStyle(entry.tint)
                 .frame(width: 26, height: 26)
-                .background(selected ? Color.white.opacity(0.18) : entry.tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 6))
+                .background(entry.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 1) {
                 Highlighted(text: entry.title, match: match).lineLimit(1)
                 if !entry.subtitle.isEmpty {
-                    Text(entry.subtitle).font(.caption).foregroundStyle(selected ? .white.opacity(0.8) : .secondary).lineLimit(1)
+                    Text(entry.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 4)
             if let badge = entry.badge {
-                if selected { Text(badge).font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.9)) }
-                else { StatusPill(text: badge) }
+                StatusPill(text: badge)
             }
             if let date = entry.date {
-                Text(Dates.age(date)).font(.caption2.monospacedDigit()).foregroundStyle(selected ? .white.opacity(0.7) : .secondary)
+                Text(Dates.age(date)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 5)
-        .background(selected ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 8))
-        .foregroundStyle(selected ? .white : .primary)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(selected ? Theme.selected : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .leading) {
+            if selected { Capsule().fill(Theme.accent).frame(width: 3, height: 18).offset(x: -1) }
+        }
         .padding(.horizontal, 6)
     }
 }
@@ -1029,11 +1060,11 @@ private struct ActionPanel: View {
                             Image(systemName: a.icon).frame(width: 16)
                             Text(a.title)
                             Spacer()
-                            if let s = a.shortcut { Text(s).font(.caption).foregroundStyle(i == state.actionSelection ? .white.opacity(0.8) : .secondary) }
+                            if let s = a.shortcut { Text(s).font(.caption).foregroundStyle(.secondary) }
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .foregroundStyle(i == state.actionSelection ? .white : (a.destructive ? .red : .primary))
-                        .background(i == state.actionSelection ? Color.accentColor : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(a.destructive ? .red : .primary)
+                        .background(i == state.actionSelection ? Theme.selected : .clear, in: RoundedRectangle(cornerRadius: 7))
                         .contentShape(Rectangle())
                         .onTapGesture { state.runAction(at: i) }
                     }
@@ -1045,8 +1076,8 @@ private struct ActionPanel: View {
                 .padding(6)
         }
         .frame(width: 300)
-        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.12)))
+        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
         .shadow(radius: 12)
     }
 }
@@ -1079,4 +1110,20 @@ enum Fuzzy {
     }
 
     static func score(_ query: String, _ text: String) -> Int? { match(query, text)?.score }
+}
+
+/// Keycap-style shortcut hint for footers.
+struct KeyHint: View {
+    let keys: String
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(keys).font(.caption2.weight(.semibold).monospaced())
+                .padding(.horizontal, 5).padding(.vertical, 1)
+                .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.primary.opacity(0.1)))
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
 }

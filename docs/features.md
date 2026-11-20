@@ -184,6 +184,8 @@ Point **Settings → Brain** at a folder of markdown notes, such as an Obsidian 
 
 ## Command palette (⌥Space)
 
+Type to search everything; **⌥↩** (or the **Ask** button) hands what you typed to the Assistant in its floating panel, and a search with no results offers the same.
+
 Press ⌥Space in any app. A floating search panel appears over what you're doing. It doesn't switch to Everboard, and it disappears when you click elsewhere.
 
 **Empty box:** shows **Needs attention** (review requests, red pipelines on your MRs, unread items), **Recent** items you opened from the palette, today's **meetings** and **commands**.
