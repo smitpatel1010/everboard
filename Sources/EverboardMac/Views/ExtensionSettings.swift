@@ -315,19 +315,28 @@ struct BrainSettingsView: View {
             }
             Section("Write") {
                 Toggle("Work brief, standup and team digest into the day's note", isOn: configBinding(model, \.brain.writeDaily))
-                Toggle("1:1 prep into each person's note", isOn: configBinding(model, \.brain.writePeople))
+                Toggle(model.config.brain.oneOnOneFolder.isEmpty ? "1:1 prep into each person's note" : "1:1 prep into the day's 1:1 note",
+                       isOn: configBinding(model, \.brain.writePeople))
                 Toggle("Weekly report draft into the week's note", isOn: configBinding(model, \.brain.writeWeekly))
                 Toggle("Every agent run as its own note, linked from the day's note", isOn: configBinding(model, \.brain.writeAgentRuns))
             }
             Section("Read") {
-                Toggle("Use my notes as AI context (person notes for 1:1 prep)", isOn: configBinding(model, \.brain.readForAI))
-                Text("Sends the text you wrote in that person's note to Claude, masked per AI privacy. Everboard's own sections are left out.")
+                Toggle("Use my notes as AI context for 1:1 prep", isOn: configBinding(model, \.brain.readForAI))
+                Text("Sends the text you wrote in that person's note, and in their last two 1:1 notes, to Claude, masked per AI privacy. Everboard's own sections are left out.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Layout") {
                 TextField("Daily notes folder", text: configBinding(model, \.brain.dailyFolder))
                 TextField("Daily note name format", text: configBinding(model, \.brain.dailyNameFormat))
                 TextField("People folder", text: configBinding(model, \.brain.peopleFolder))
+                Picker("Name people notes by", selection: configBinding(model, \.brain.peopleNoteName)) {
+                    Text("Display name (Asha K.md)").tag(PersonNoteName.name)
+                    Text("Username (asha.md)").tag(PersonNoteName.username)
+                }
+                TextField("1:1 notes folder (optional: one dated note per 1:1)", text: configBinding(model, \.brain.oneOnOneFolder))
+                if !model.config.brain.oneOnOneFolder.isEmpty {
+                    TextField("1:1 note name ({person}, {date}; / for subfolders)", text: configBinding(model, \.brain.oneOnOneNameFormat))
+                }
                 TextField("Weekly notes folder", text: configBinding(model, \.brain.weeklyFolder))
                 TextField("Agent runs folder", text: configBinding(model, \.brain.agentsFolder))
             }

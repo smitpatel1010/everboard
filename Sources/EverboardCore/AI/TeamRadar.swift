@@ -89,9 +89,9 @@ public struct TeamRadar: Sendable, Codable {
 
     static func hours(_ h: Double) -> String { h < 48 ? String(format: "%.0fh", h) : String(format: "%.1fd", h / 24) }
 
-    /// Markdown digest. `wikiLinks` writes people as `[[Name]]` (for the brain folder) instead of bold.
-    public func digestMarkdown(wikiLinks: Bool = false) -> String {
-        func person(_ n: String) -> String { wikiLinks ? NoteName.link(n) : "**\(n)**" }
+    /// Markdown digest. People are bold, or written by `link` (e.g. `[[note]]` links for the brain folder).
+    public func digestMarkdown(link: ((PersonLoad) -> String)? = nil) -> String {
+        func person(_ p: PersonLoad) -> String { link?(p) ?? "**\(p.name)**" }
         func change(_ i: FeedItem) -> String {
             let ref = i.url.map { "[\(i.subtitle)](\($0))" } ?? i.subtitle
             return "\(ref) \(i.title)"
@@ -102,14 +102,14 @@ public struct TeamRadar: Sendable, Codable {
             if !p.reviewing.isEmpty { parts.append("reviewing \(p.reviewing.count)") }
             if let h = p.medianReviewWaitHours { parts.append("waiting for review ~\(Self.hours(h))") }
             if !p.jiraMoved.isEmpty { parts.append("Jira: \(p.jiraMoved.count) moved, \(p.jiraDone) done") }
-            lines.append("- \(person(p.name)) — " + parts.joined(separator: " · ") + (p.flags.isEmpty ? "" : " — ⚠︎ " + p.flags.joined(separator: ", ")))
+            lines.append("- \(person(p)) — " + parts.joined(separator: " · ") + (p.flags.isEmpty ? "" : " — ⚠︎ " + p.flags.joined(separator: ", ")))
         }
         let attention = people.flatMap { p in
             Self.unique(p.red + p.aging).map { i -> String in
                 var why: [String] = ["open \(Dates.age(i.createdAt, now: generatedAt))"]
                 if i["pipelineStatus"] == "failed" { why.append("pipeline failed") }
                 if (i["approvedBy"] ?? "").isEmpty, i["draft"] != "1" { why.append("no approval") }
-                return "- \(change(i)) — \(person(p.name)), " + why.joined(separator: ", ")
+                return "- \(change(i)) — \(person(p)), " + why.joined(separator: ", ")
             }
         }
         var out = "Team of \(people.count) · aging = open > \(Int(agingDays))d · Jira window \(windowDays)d\n\n" + lines.joined(separator: "\n")

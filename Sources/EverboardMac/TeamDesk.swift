@@ -27,10 +27,16 @@ final class TeamDesk {
         }
     }
 
-    func digest(wikiLinks: Bool = false) -> String? { radar?.digestMarkdown(wikiLinks: wikiLinks) }
+    func digest() -> String? { radar?.digestMarkdown() }
+
+    /// The digest with people linked to their notes in `brain`.
+    func digest(for brain: Brain) -> String? {
+        let people = Dictionary(model.config.reportees.map { ($0.id, $0.brainPerson) }, uniquingKeysWith: { a, _ in a })
+        return radar?.digestMarkdown { brain.personLink(people[$0.id] ?? BrainPerson(name: $0.name)) }
+    }
 
     func saveDigestToBrain() {
-        guard let text = digest(wikiLinks: true) else { return }
+        guard let brain = model.brain, let text = digest(for: brain) else { return }
         model.writeToBrain("team digest") { try $0.writeDailySection("team-digest", heading: "Team digest", markdown: text) }
         ToastCenter.shared.show(.init(title: "Team digest saved to today's note", body: "", actionTitle: nil, onClick: {}, onAction: nil), duration: 3)
     }
@@ -42,13 +48,12 @@ final class TeamDesk {
         Task {
             defer { prepRunning.remove(person.id) }
             if radar == nil { await refreshRadar() }
-            let name = person.name ?? person.username ?? person.email
             do {
                 let text = try await service.oneOnOnePrep(person, load: radar?.people.first { $0.id == person.id },
-                                                          notes: model.brainContext(person: name))
+                                                          notes: model.brainContext(person: person.brainPerson))
                 prep[person.id] = (text, Date())
                 if model.config.brain.writePeople {
-                    model.writeToBrain("1:1 prep") { try $0.writePersonSection(name, block: "one-on-one-prep", heading: "1:1 prep", markdown: text) }
+                    model.writeToBrain("1:1 prep") { try $0.writeOneOnOnePrep(person.brainPerson, markdown: text) }
                 }
             } catch {
                 prepError[person.id] = error.localizedDescription

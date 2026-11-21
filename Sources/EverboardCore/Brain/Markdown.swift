@@ -42,9 +42,24 @@ public enum Frontmatter {
         let lines = fields.map { key, value in
             ["tags", "aliases"].contains(key)
                 ? "\(key): [" + value.split(separator: ",").map { quote($0.trimmingCharacters(in: .whitespaces)) }.joined(separator: ", ") + "]"
-                : "\(key): \(quote(value))"
+                : "\(key): \(scalar(value))"
         }
         return "---\n" + lines.joined(separator: "\n") + "\n---\n"
+    }
+
+    /// `note` with frontmatter field `key` set to `value`, only if the note already has that field. The rest of the
+    /// note, including how its other fields are written, is left exactly as it was.
+    public static func setting(_ key: String, to value: String, in note: String) -> String {
+        var lines = note.components(separatedBy: "\n")
+        guard lines.first == "---", let close = lines.dropFirst().firstIndex(where: { $0 == "---" || $0 == "..." }),
+              let i = lines[1..<close].firstIndex(where: { $0.hasPrefix(key + ":") }) else { return note }
+        lines[i] = "\(key): \(scalar(value))"
+        return lines.joined(separator: "\n")
+    }
+
+    /// Dates stay bare (`2026-11-18`) so Obsidian reads them as dates; everything else is quoted.
+    static func scalar(_ s: String) -> String {
+        s.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil ? s : quote(s)
     }
 
     public static func quote(_ s: String) -> String {

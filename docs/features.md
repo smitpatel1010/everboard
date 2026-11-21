@@ -160,14 +160,15 @@ Point **Settings → Brain** at a folder of markdown notes, such as an Obsidian 
 | What | Where | When |
 |---|---|---|
 | Work brief, standup draft, team digest, agent-run index | `Daily/<yyyy-MM-dd>.md` | When each is generated or saved |
-| 1:1 prep | `People/<Name>.md` | When you draft it |
+| 1:1 prep | `People/<Name>.md`, or `<1:1 folder>/<person>/<yyyy-MM-dd>.md` when a 1:1 folder is set | When you draft it |
 | Weekly report draft and team digest | `Weekly/<yyyy>-W<ww>.md` | When the report is generated |
 | Each agent run, with command and output | `Everboard/Agent runs/<date> <action> <item>.md` | When the run finishes |
 
-- Notes have YAML frontmatter (`date`, `tags`, …) and use `[[links]]` for people and days, so they show up in Obsidian's graph and backlinks.
+- Notes have YAML frontmatter (`type`, `date`, `updated`, `tags`, …) and use `[[links]]` for people and days, so they show up in Obsidian's graph and backlinks. When Everboard adds to a note whose frontmatter already has `updated`, it sets that field to today and leaves the rest of the frontmatter as written.
 - **Your writing is never overwritten.** In notes you may also edit (daily, people, weekly), Everboard only replaces its own section between `<!-- everboard:… -->` markers and leaves everything else alone. Agent-run notes are new files; a name clash gets " 2" instead of replacing anything.
-- Folder names and the daily-note name format are configurable, to match an existing vault.
-- **Reading back** is off by default. When on, the text *you* wrote in a person's note (Everboard's sections excluded) is added to their 1:1 prep prompt.
+- Folder names and the daily-note name format are configurable, to match an existing vault. Person notes can be named by display name (`Asha K.md`) or by username (`asha.k.md`, linked as `[[asha.k|Asha K]]`), so scripts can join on usernames. The username is the GitLab one, else the GitHub login.
+- **1:1 folder.** Optional. When set, each 1:1 gets its own note, by default `<person>/<yyyy-MM-dd>.md` so a person's 1:1s sit together. **1:1 note name** changes the layout with `{person}` and `{date}`, e.g. `{date} {person}` for one flat folder. If that day's note already exists (you or another tool started it), Everboard adds its own section and keeps the rest. Past 1:1 notes are found with the same format.
+- **Reading back** is off by default. When on, 1:1 prep also sends the text *you* wrote in the person's note and in their last two 1:1 notes, with Everboard's sections excluded and masked like every prompt.
 
 ## World & Tech brief
 

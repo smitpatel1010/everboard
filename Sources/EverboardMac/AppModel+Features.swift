@@ -49,7 +49,7 @@ extension AppModel {
                 await TeamDesk.shared.refreshRadar()
             }
             if self.config.brain.writeWeekly {
-                let digest = TeamDesk.shared.digest(wikiLinks: true)
+                let digest = self.brain.flatMap { TeamDesk.shared.digest(for: $0) }
                 self.writeToBrain("weekly report") { b in
                     try b.writeWeeklySection("weekly-report", heading: "Weekly report (draft)", markdown: text)
                     if let digest { try b.writeWeeklySection("team-digest", heading: "Team digest", markdown: digest) }

@@ -19,10 +19,10 @@ extension AppModel {
         }
     }
 
-    /// Your own notes about `name`, when Settings → Brain allows sending notes to AI.
-    func brainContext(person name: String) -> String? {
+    /// Your own notes about someone (their note and latest 1:1 notes), when Settings → Brain allows sending notes to AI.
+    func brainContext(person: BrainPerson) -> String? {
         guard config.brain.readForAI else { return nil }
-        return brain?.personContext(name)
+        return brain?.personContext(person)
     }
 
     func openInBrain(_ relative: String) {

@@ -8,6 +8,12 @@ public struct Reportee: Codable, Hashable, Sendable, Identifiable {
     public var githubUsername: String?
     public var name: String?
     public var id: String { email.lowercased() }
+    /// How the brain folder refers to them.
+    /// The username is their GitLab one, else their GitHub login, so GitHub-only teams get username notes too.
+    public var brainPerson: BrainPerson {
+        let login = [username, githubUsername].compactMap { $0?.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty }
+        return BrainPerson(name: name ?? login ?? email, username: login)
+    }
 
     public init(email: String, username: String? = nil, githubUsername: String? = nil, name: String? = nil) {
         self.email = email

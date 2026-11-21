@@ -34,7 +34,7 @@ The path to `claude` is auto-detected (`~/.local/bin`, Homebrew, `/usr/local/bin
 | Weekly report (`report.weekly`) | Merged and open MRs for you and each reportee over 7 days, Jira issues resolved | none | 3–15k in |
 | Team health AI read (`team.commentary`) | The metrics table only | none | < 1k in |
 | Assistant (`assistant.command`) | Your request (text or transcribed speech), up to 120 dashboard items as one line each (ref, title, status, person, age), your agent action names, your team's names, and only the current chat's last 4 exchanges (so chats never grow the prompt) | none | 2–6k in |
-| 1:1 prep (`team.oneonone`) | One reportee's merged MRs/PRs and reviews over 14 days, their open MRs, reviews waiting on them, recent Jira movement; your own note about them only if **Brain → Use my notes as AI context** is on | none | 1–6k in |
+| 1:1 prep (`team.oneonone`) | One reportee's merged MRs/PRs and reviews over 14 days, their open MRs, reviews waiting on them, recent Jira movement; your own note about them and your last two 1:1 notes with them, only if **Brain → Use my notes as AI context** is on | none | 1–6k in |
 | Meeting prep (`meeting.prep`) | Event title, time, attendees, notes (unless turned off), related MR/issue titles | none | 1–3k in |
 | World & Tech brief (`news.brief`) | About 150 headlines with snippets, your preferences, recent feedback | `WebSearch` if gap check is on | 15–25k in |
 | Go deeper (`news.deeper`) | One story and its source URLs | `WebFetch`, `WebSearch` | varies |

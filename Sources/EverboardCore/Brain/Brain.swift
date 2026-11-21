@@ -20,6 +20,13 @@ public struct BrainSettings: Codable, Hashable, Sendable {
     public var readForAI = false
     /// Daily note file name, `yyyy-MM-dd` style (DateFormatter pattern).
     public var dailyNameFormat = "yyyy-MM-dd"
+    /// What person notes are named after: their display name, or their username (so scripts can join on it).
+    public var peopleNoteName: PersonNoteName = .name
+    /// Where 1:1 prep goes. Empty = a section in the person's note; set = one note per 1:1 in this folder.
+    public var oneOnOneFolder = ""
+    /// 1:1 note path inside `oneOnOneFolder`, without `.md`: `{person}` and `{date}` (yyyy-MM-dd), `/` for subfolders.
+    /// The default keeps each person's 1:1s together: `asha.k/2026-11-21`.
+    public var oneOnOneNameFormat = "{person}/{date}"
 
     public init() {}
 
@@ -40,11 +47,29 @@ public struct BrainSettings: Codable, Hashable, Sendable {
         writeAgentRuns = v(.writeAgentRuns, d.writeAgentRuns)
         readForAI = v(.readForAI, d.readForAI)
         dailyNameFormat = v(.dailyNameFormat, d.dailyNameFormat)
+        peopleNoteName = v(.peopleNoteName, d.peopleNoteName)
+        oneOnOneFolder = v(.oneOnOneFolder, d.oneOnOneFolder)
+        oneOnOneNameFormat = v(.oneOnOneNameFormat, d.oneOnOneNameFormat)
     }
 
     enum CodingKeys: String, CodingKey {
         case folder, dailyFolder, peopleFolder, weeklyFolder, agentsFolder, writeDaily, writePeople, writeWeekly, writeAgentRuns
-        case readForAI, dailyNameFormat
+        case readForAI, dailyNameFormat, peopleNoteName, oneOnOneFolder, oneOnOneNameFormat
+    }
+}
+
+public enum PersonNoteName: String, Codable, CaseIterable, Sendable {
+    case name, username
+}
+
+/// Someone the brain keeps notes about: a display name, and a username when known.
+public struct BrainPerson: Hashable, Sendable {
+    public var name: String
+    public var username: String?
+
+    public init(name: String, username: String? = nil) {
+        self.name = name
+        self.username = username
     }
 }
 
@@ -105,7 +130,33 @@ public struct Brain: Sendable {
         "\(settings.dailyFolder)/\(Self.format(date, settings.dailyNameFormat)).md"
     }
 
-    public func personPath(_ name: String) -> String { "\(settings.peopleFolder)/\(NoteName.safe(name)).md" }
+    /// The person's note name: their username when notes are named that way and it's known, else their display name.
+    public func personKey(_ p: BrainPerson) -> String {
+        if settings.peopleNoteName == .username, let u = p.username?.trimmingCharacters(in: .whitespaces), !u.isEmpty { return NoteName.safe(u) }
+        return NoteName.safe(p.name)
+    }
+
+    public func personPath(_ p: BrainPerson) -> String { "\(settings.peopleFolder)/\(personKey(p)).md" }
+
+    /// `[[key|Name]]` when the note is named by username, so the link shows the name and opens the existing note.
+    public func personLink(_ p: BrainPerson) -> String {
+        let key = personKey(p)
+        return key == NoteName.safe(p.name) ? "[[\(key)]]" : "[[\(key)|\(p.name)]]"
+    }
+
+    public var usesOneOnOneFolder: Bool { !settings.oneOnOneFolder.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// The name format, or the default if it lacks `{person}` or `{date}` (notes would collide or never be found again).
+    var oneOnOneFormat: String {
+        let f = settings.oneOnOneNameFormat.trimmingCharacters(in: .whitespaces)
+        return f.contains("{person}") && f.contains("{date}") ? f : BrainSettings().oneOnOneNameFormat
+    }
+
+    public func oneOnOnePath(_ p: BrainPerson, date: Date) -> String {
+        let name = oneOnOneFormat.replacingOccurrences(of: "{person}", with: personKey(p))
+            .replacingOccurrences(of: "{date}", with: Self.format(date, "yyyy-MM-dd"))
+        return "\(settings.oneOnOneFolder)/\(name).md"
+    }
 
     public func weeklyPath(_ date: Date) -> String {
         let cal = Calendar(identifier: .iso8601)
@@ -127,11 +178,50 @@ public struct Brain: Sendable {
         return try? String(contentsOf: u, encoding: .utf8)
     }
 
-    /// What you wrote about a person (their note minus Everboard's blocks), trimmed to `limit` characters.
-    public func personContext(_ name: String, limit: Int = 6000) -> String? {
-        guard let text = read(personPath(name)) else { return nil }
-        let mine = ManagedBlock.stripAll(Frontmatter.parse(text).body).trimmingCharacters(in: .whitespacesAndNewlines)
-        return mine.isEmpty ? nil : String(mine.suffix(limit))
+    /// What you wrote about a person: their note, then their latest 1:1 notes (newest first), each without Everboard's
+    /// own sections and trimmed to `limit` characters in all.
+    public func personContext(_ p: BrainPerson, oneOnOnes: Int = 2, through date: Date = Date(), limit: Int = 6000) -> String? {
+        var parts: [String] = []
+        if let text = read(personPath(p)), let mine = Self.ownText(text) {
+            parts.append(String(mine.suffix(limit / 2)))
+        }
+        for path in recentOneOnOnes(p, through: date).prefix(oneOnOnes) {
+            if let text = read(path), let mine = Self.ownText(text) {
+                parts.append("### 1:1 notes, \(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)\n\(mine)")
+            }
+        }
+        let joined = parts.joined(separator: "\n\n")
+        return joined.isEmpty ? nil : String(joined.prefix(limit))
+    }
+
+    /// 1:1 notes for this person in the 1:1 folder up to and including `date`, newest first. Found by matching the
+    /// name format, so subfolder and flat layouts both work.
+    public func recentOneOnOnes(_ p: BrainPerson, through date: Date = Date()) -> [String] {
+        guard usesOneOnOneFolder, let dir = try? url(settings.oneOnOneFolder + "/x.md").deletingLastPathComponent(),
+              let files = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+        else { return [] }
+        let parts = oneOnOneFormat.components(separatedBy: "{date}")
+        let pattern = "^" + parts.map { NSRegularExpression.escapedPattern(for: $0)
+            .replacingOccurrences(of: NSRegularExpression.escapedPattern(for: "{person}"), with: NSRegularExpression.escapedPattern(for: personKey(p))) }
+            .joined(separator: #"(\d{4}-\d{2}-\d{2})"#) + #"\.md$"#
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let today = Self.format(date, "yyyy-MM-dd")
+        let base = dir.standardizedFileURL.path + "/"
+        var found: [(day: String, path: String)] = []
+        for case let u as URL in files where u.pathExtension == "md" {
+            let rel = String(u.standardizedFileURL.path.dropFirst(base.count))
+            guard let m = re.firstMatch(in: rel, range: NSRange(rel.startIndex..., in: rel)),
+                  let r = Range(m.range(at: 1), in: rel) else { continue }
+            let day = String(rel[r])
+            if day <= today { found.append((day, "\(settings.oneOnOneFolder)/\(rel)")) }
+            if found.count > 500 { break }
+        }
+        return found.sorted { $0.day > $1.day }.map(\.path)
+    }
+
+    static func ownText(_ note: String) -> String? {
+        let mine = ManagedBlock.stripAll(Frontmatter.parse(note).body).trimmingCharacters(in: .whitespacesAndNewlines)
+        return mine.isEmpty ? nil : mine
     }
 
     /// Your own text from the last `days` daily notes, newest first.
@@ -155,8 +245,9 @@ public struct Brain: Sendable {
                             title: String? = nil) throws -> URL {
         let u = try url(relative)
         try FileManager.default.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let existing = (try? String(contentsOf: u, encoding: .utf8))
-            ?? Frontmatter.render(frontmatter) + (title.map { "# \($0)\n\n" } ?? "")
+        let today = Self.format(Date(), "yyyy-MM-dd")
+        let existing = (try? String(contentsOf: u, encoding: .utf8)).map { Frontmatter.setting("updated", to: today, in: $0) }
+            ?? Frontmatter.render(frontmatter + [("updated", today)]) + (title.map { "# \($0)\n\n" } ?? "")
         try ManagedBlock.upsert(existing, id: block, content: markdown).write(to: u, atomically: true, encoding: .utf8)
         return u
     }
@@ -171,7 +262,8 @@ public struct Brain: Sendable {
             let u = try url(relative)
             if !FileManager.default.fileExists(atPath: u.path) {
                 try FileManager.default.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try (Frontmatter.render(frontmatter) + body).write(to: u, atomically: true, encoding: .utf8)
+                try (Frontmatter.render(frontmatter + [("updated", Self.format(Date(), "yyyy-MM-dd"))]) + body)
+                    .write(to: u, atomically: true, encoding: .utf8)
                 return relative
             }
             n += 1
@@ -183,19 +275,38 @@ public struct Brain: Sendable {
     public func writeDailySection(_ block: String, heading: String, markdown: String, date: Date = Date()) throws {
         let day = Self.format(date, "yyyy-MM-dd")
         try upsertBlock(dailyPath(date), block: block, markdown: "## \(heading)\n\n\(markdown)",
-                        frontmatter: [("date", day), ("tags", "daily")])
+                        frontmatter: [("type", "daily"), ("date", day), ("tags", "daily")])
     }
 
-    public func writePersonSection(_ name: String, block: String, heading: String, markdown: String, date: Date = Date()) throws {
+    public func writePersonSection(_ p: BrainPerson, block: String, heading: String, markdown: String, date: Date = Date()) throws {
         let day = Self.format(date, "yyyy-MM-dd")
-        try upsertBlock(personPath(name), block: block,
+        var fm: [(String, String)] = [("type", "person"), ("name", p.name)]
+        if let u = p.username, !u.isEmpty { fm.append(("username", u)) }
+        try upsertBlock(personPath(p), block: block,
                         markdown: "## \(heading) (\(day))\n\n\(markdown)\n\nDaily note: \(NoteName.link(Self.format(date, settings.dailyNameFormat)))",
-                        frontmatter: [("tags", "person")], title: name)
+                        frontmatter: fm + [("tags", "person")], title: p.name)
+    }
+
+    /// 1:1 prep: the day's note in the 1:1 folder when one is set (Everboard's section only, so a note you or another
+    /// tool started that day is kept), otherwise a section in the person's note. Returns the note's path.
+    @discardableResult
+    public func writeOneOnOnePrep(_ p: BrainPerson, markdown: String, date: Date = Date()) throws -> String {
+        guard usesOneOnOneFolder else {
+            try writePersonSection(p, block: "one-on-one-prep", heading: "1:1 prep", markdown: markdown, date: date)
+            return personPath(p)
+        }
+        let day = Self.format(date, "yyyy-MM-dd")
+        let path = oneOnOnePath(p, date: date)
+        try upsertBlock(path, block: "one-on-one-prep",
+                        markdown: "## Prep (Everboard draft)\n\n\(markdown)",
+                        frontmatter: [("type", "one-on-one"), ("person", personKey(p)), ("date", day), ("tags", "one-on-one")],
+                        title: "1:1 with \(personLink(p)), \(day)")
+        return path
     }
 
     public func writeWeeklySection(_ block: String, heading: String, markdown: String, date: Date = Date()) throws {
         try upsertBlock(weeklyPath(date), block: block, markdown: "## \(heading)\n\n\(markdown)",
-                        frontmatter: [("week", URL(fileURLWithPath: weeklyPath(date)).deletingPathExtension().lastPathComponent),
+                        frontmatter: [("type", "weekly"), ("week", URL(fileURLWithPath: weeklyPath(date)).deletingPathExtension().lastPathComponent),
                                       ("tags", "weekly")])
     }
 
@@ -203,7 +314,7 @@ public struct Brain: Sendable {
     public func writeAgentRun(_ run: AgentRun) throws -> String {
         let day = Self.format(run.ts, "yyyy-MM-dd")
         let fm: [(String, String)] = [
-            ("date", day), ("action", run.actionName), ("item", run.itemRef), ("url", run.itemUrl ?? ""),
+            ("type", "agent-run"), ("date", day), ("action", run.actionName), ("item", run.itemRef), ("url", run.itemUrl ?? ""),
             ("status", run.status.rawValue), ("tags", "everboard, agent-run"),
         ]
         let body = """
