@@ -71,7 +71,7 @@ public struct AssistantPlanner: Sendable {
     public static func localIntent(_ text: String) -> AssistantIntent? {
         let t = text.lowercased().trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
         if ["refresh", "refresh everything", "sync", "update"].contains(t) {
-            return AssistantIntent(action: .refresh, reply: "Refreshing every account.")
+            return AssistantIntent(action: .refresh, reply: "")
         }
         for verb in ["open ", "show ", "go to ", "show me "] where t.hasPrefix(verb) {
             let rest = String(t.dropFirst(verb.count)).replacingOccurrences(of: "my ", with: "")
@@ -79,7 +79,7 @@ public struct AssistantPlanner: Sendable {
                                              "reviews": "merge requests", "radar": "team radar", "team": "team radar",
                                              "brief": "work brief", "news": "world", "agents": "agent runs", "1:1": "one on one"]
             let screen = aliases[rest] ?? rest
-            if screens.contains(screen) { return AssistantIntent(action: .show, screen: screen, reply: "Opening \(screen).") }
+            if screens.contains(screen) { return AssistantIntent(action: .show, screen: screen, reply: "") }
         }
         return nil
     }
@@ -87,8 +87,21 @@ public struct AssistantPlanner: Sendable {
     static let system = """
     You are the voice and chat assistant inside a developer's work dashboard. Map the user's request to exactly one action \
     from the schema, using only the item ids, agent ids and people listed. If the request is ambiguous or nothing matches, \
-    use action "answer" and ask a short clarifying question. For questions about their work, answer from the snapshot with \
-    action "answer". Replies are read aloud: one or two short sentences, no markdown, no ids, refer to items by their short ref.
+    use action "answer" and ask a short clarifying question.
+
+    Actions:
+    - answer: answer a question from the snapshot ("what's on my plate?", "which reviews waited longest?"). Changes nothing.
+    - show: open a screen, given in "screen" (one of the listed screens). Use it to see something that already exists, \
+    including the current work brief ("open my brief", "show the radar").
+    - work_brief: write a new work brief with AI. Only when asked to write, redo or refresh the brief.
+    - standup: draft today's standup. one_on_one: draft 1:1 prep for "person".
+    - open: open "item" in the browser. summarize: AI summary of an MR/PR "item". digest: AI digest of a Jira "item".
+    - run_agent: run agent "agent" on "item"; the user is asked to confirm first.
+    - refresh: re-poll every account.
+
+    The app carries out the action and tells the user what it did (which page it opened, what it's drafting), so your \
+    reply must not describe that or promise anything else; for actions other than answer, a short lead-in or nothing is fine. \
+    Replies are read aloud: one or two short sentences, no markdown, no ids, refer to items by their short ref.
     """
 
     static let schema = """

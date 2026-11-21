@@ -11,6 +11,8 @@ final class TeamDesk {
     var prep: [String: (text: String, at: Date?)] = [:]
     var prepRunning: Set<String> = []
     var prepError: [String: String] = [:]
+    /// The reportee shown on the 1:1 prep tab (id). Set from the radar or the Assistant; the tab follows it live.
+    var prepPerson: String?
 
     private var model: AppModel { .shared }
 

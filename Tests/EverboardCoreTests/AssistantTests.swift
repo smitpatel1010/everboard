@@ -23,6 +23,15 @@ private final class FakeClaude: ClaudeRunning, @unchecked Sendable {
         AssistantContext(items: [mr, issue], actions: [review], people: ["Asha K"], screens: AssistantPlanner.screens)
     }
 
+    /// The model picks actions from their descriptions; an undescribed one gets guessed at (e.g. "work_brief" taken
+    /// to mean "open the brief").
+    @Test func promptDescribesEveryAction() {
+        for a in AssistantIntent.Action.allCases {
+            #expect(AssistantPlanner.system.contains("- \(a.rawValue):") || AssistantPlanner.system.contains(" \(a.rawValue): "),
+                    "\(a.rawValue) isn't described")
+        }
+    }
+
     @Test func navigationIsLocal() {
         #expect(AssistantPlanner.localIntent("Open inbox.")?.screen == "inbox")
         #expect(AssistantPlanner.localIntent("show me my PRs")?.screen == "merge requests")

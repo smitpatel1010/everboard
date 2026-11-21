@@ -163,33 +163,45 @@ final class AssistantModel {
             append(m)
             if spoken { speak(m.text) }
         case .open:
-            if let item { model.openItem(item) }
-            reply(intent.reply, spoken: spoken)
+            guard let item else { return reply(intent.reply, spoken: spoken) }
+            model.openItem(item)
+            reply(intent.reply, done: "Opened \(item.subtitle) in your browser.", spoken: spoken)
         case .summarize:
-            if let item { model.summarize(item) }
-            reply(intent.reply, spoken: spoken)
+            guard let item else { return reply(intent.reply, spoken: spoken) }
+            model.summarize(item)
+            model.showDashboard()
+            reply(intent.reply, done: "Summarizing \(item.subtitle); it opens in Everboard.", spoken: spoken)
         case .digest:
-            if let item, let key = item.jiraKey ?? item["jiraKeys"]?.split(separator: ",").first.map(String.init) {
-                model.digest(jiraKey: key, title: item.title, url: item.url)
+            guard let item, let key = item.jiraKey ?? item["jiraKeys"]?.split(separator: ",").first.map(String.init) else {
+                return reply(intent.reply, spoken: spoken)
             }
-            reply(intent.reply, spoken: spoken)
+            model.digest(jiraKey: key, title: item.title, url: item.url)
+            model.showDashboard()
+            reply(intent.reply, done: "Digesting \(key); it opens in Everboard.", spoken: spoken)
         case .show:
-            show(intent.screen ?? "home")
-            reply(intent.reply, spoken: spoken)
+            let screen = intent.screen ?? "home"
+            show(screen)
+            reply(intent.reply, done: "Opened \(screen).", spoken: spoken)
         case .workBrief:
             model.generateWorkBrief()
-            reply(intent.reply + " It'll be on the Work brief page.", spoken: spoken)
+            model.showDashboard(.workBrief)
+            reply(intent.reply, done: "Opened the Work brief page; the new brief appears there in a minute.", spoken: spoken)
         case .standup:
             model.generateStandup()
-            reply(intent.reply + " It'll be under Team & reports → Daily standup.", spoken: spoken)
+            model.reportsTab = "standup"
+            model.showDashboard(.reports)
+            reply(intent.reply, done: "Drafting your standup; it's open under Team & reports.", spoken: spoken)
         case .oneOnOne:
-            if let r = model.config.reportees.first(where: { ($0.name ?? $0.username ?? "").caseInsensitiveCompare(intent.person ?? "") == .orderedSame }) {
-                TeamDesk.shared.generatePrep(r)
-            }
-            reply(intent.reply + " It'll be under Team & reports → 1:1 prep.", spoken: spoken)
+            guard let r = model.config.reportees.first(where: { ($0.name ?? $0.username ?? "").caseInsensitiveCompare(intent.person ?? "") == .orderedSame })
+            else { return reply(intent.reply, spoken: spoken) }
+            TeamDesk.shared.generatePrep(r)
+            TeamDesk.shared.prepPerson = r.id
+            model.reportsTab = "oneonone"
+            model.showDashboard(.reports)
+            reply(intent.reply, done: "Drafting 1:1 prep for \(r.name ?? r.username ?? "them"); it's open under Team & reports.", spoken: spoken)
         case .refresh:
             model.refreshAll()
-            reply(intent.reply, spoken: spoken)
+            reply(intent.reply, done: "Refreshing every account.", spoken: spoken)
         case .answer:
             reply(intent.reply, spoken: spoken)
         }
@@ -204,8 +216,11 @@ final class AssistantModel {
             let m = AssistantChat.Message(role: .assistant, text: "Run \(action.name) on \(plan.itemRef)?")
             if plan.runnable { pending[m.id] = plan }
             append(m, toChat: chatID)
-        } else {
+        } else if intent.action == .answer {
             append(.init(role: .assistant, text: intent.reply), toChat: chatID)
+        } else {
+            // Nothing was done behind your back, so say so rather than leave the model's lead-in (or nothing).
+            append(.init(role: .assistant, text: "Not done: you'd switched to another chat. Ask again here to do it."), toChat: chatID)
         }
     }
 
@@ -246,6 +261,13 @@ final class AssistantModel {
 
     // MARK: Helpers
 
+    /// The model's words, then what the app actually did. The second part comes from the app, so a reply never claims an
+    /// action that didn't happen, and the chat history the planner sees says what really happened.
+    private func reply(_ text: String, done: String, spoken: Bool) {
+        let lead = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        reply(lead.isEmpty || lead.caseInsensitiveCompare(done) == .orderedSame ? done : lead + " " + done, spoken: spoken)
+    }
+
     private func reply(_ text: String, spoken: Bool, error: Bool = false, to chatID: String? = nil) {
         append(.init(role: .assistant, text: text, isError: error), to: chatID)
         if spoken && (chatID == nil || chatID == currentID) { speak(text) }
@@ -260,7 +282,9 @@ final class AssistantModel {
         if Speech.shared.speakingID == "assistant" { Speech.shared.stop() }
     }
 
+    /// Switches the dashboard to a screen and brings it forward (it may be closed when you ask from the floating panel).
     private func show(_ screen: String) {
+        defer { model.showDashboard() }
         switch screen {
         case "inbox": model.selection = .inbox
         case "merge requests": model.selection = .mergeRequests

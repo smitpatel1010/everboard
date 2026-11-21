@@ -55,7 +55,7 @@ struct TeamRadarView: View {
                                     Text(p.jiraMoved.isEmpty ? "—" : "\(p.jiraMoved.count) (\(p.jiraDone) done)").monospacedDigit()
                                     Button("1:1 prep") {
                                         model.reportsTab = "oneonone"
-                                        OneOnOneView.selected = p.id
+                                        desk.prepPerson = p.id
                                     }.buttonStyle(.link)
                                 }
                                 if expanded.contains(p.id) {
@@ -132,16 +132,12 @@ private struct PersonDetail: View {
 struct OneOnOneView: View {
     private var model: AppModel { .shared }
     private var desk: TeamDesk { .shared }
-    /// Set by the radar's "1:1 prep" link.
-    @MainActor static var selected: String?
-    @State private var person: String = ""
-
-    var current: Reportee? { model.config.reportees.first { $0.id == person } ?? model.config.reportees.first }
+    var current: Reportee? { model.config.reportees.first { $0.id == desk.prepPerson } ?? model.config.reportees.first }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Picker("Person", selection: $person) {
+                Picker("Person", selection: Binding(get: { current?.id ?? "" }, set: { desk.prepPerson = $0 })) {
                     ForEach(model.config.reportees) { r in Text(r.name ?? r.username ?? r.email).tag(r.id) }
                 }
                 .frame(maxWidth: 260)
@@ -183,7 +179,7 @@ struct OneOnOneView: View {
             }
         }
         .task {
-            if let s = Self.selected { person = s; Self.selected = nil } else if person.isEmpty { person = model.config.reportees.first?.id ?? "" }
+            if desk.prepPerson == nil { desk.prepPerson = model.config.reportees.first?.id }
             await desk.loadPreps()
         }
     }
