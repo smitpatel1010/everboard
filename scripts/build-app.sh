@@ -15,11 +15,14 @@ APP="build/${APP_NAME}.app"
 INSTALL_DIR="$HOME/Applications"
 
 swift build -c "$CONFIG" --product "$APP_NAME"
+# Small helper that coding agents' hooks call to report session status (see docs/agent-sessions.md).
+swift build -c "$CONFIG" --product everboard-hook
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
+cp "$BIN_DIR/everboard-hook" "$APP/Contents/MacOS/everboard-hook"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # SwiftPM resource bundles (GRDB ships a privacy manifest).

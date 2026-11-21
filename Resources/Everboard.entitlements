@@ -4,5 +4,7 @@
 <dict>
     <!-- Push-to-talk for the Assistant. Needed under the hardened runtime. -->
     <key>com.apple.security.device.audio-input</key><true/>
+    <!-- Agent sessions: select a session's Terminal or iTerm2 tab and type replies into it. -->
+    <key>com.apple.security.automation.apple-events</key><true/>
 </dict>
 </plist>

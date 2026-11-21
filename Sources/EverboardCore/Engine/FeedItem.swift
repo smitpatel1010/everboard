@@ -53,6 +53,11 @@ public enum EventCategory: String, CaseIterable, Codable, Sendable {
     case reportReady = "report.ready"
     case customNew = "custom.new"
     case customStatus = "custom.status"
+    case sessionNeedsApproval = "session.needs_approval"
+    case sessionNeedsReply = "session.needs_reply"
+    case sessionDone = "session.done"
+    case sessionFailed = "session.failed"
+    case sessionNotice = "session.notice"
 
     public var label: String {
         switch self {
@@ -74,10 +79,16 @@ public enum EventCategory: String, CaseIterable, Codable, Sendable {
         case .reportReady: return "Weekly report / team health ready"
         case .customNew: return "New item in a custom feed"
         case .customStatus: return "Status change in a custom feed"
+        case .sessionNeedsApproval: return "A coding agent needs my approval"
+        case .sessionNeedsReply: return "A coding agent is waiting for my reply"
+        case .sessionDone: return "A coding agent finished its turn"
+        case .sessionFailed: return "A coding agent stopped with an error"
+        case .sessionNotice: return "A coding agent reported a problem (failed hook, API error)"
         }
     }
 
-    public var defaultEnabled: Bool { true }
+    /// "Finished" fires after every turn; it's opt-in so a busy agent doesn't flood notifications.
+    public var defaultEnabled: Bool { self != .sessionDone }
 
     public var source: String {
         switch self {
@@ -86,6 +97,7 @@ public enum EventCategory: String, CaseIterable, Codable, Sendable {
         case .workBriefReady, .reportReady: return "brief"
         case .newsBriefReady, .newsMajor, .newsFollow: return "news"
         case .customNew, .customStatus: return "custom"
+        case .sessionNeedsApproval, .sessionNeedsReply, .sessionDone, .sessionFailed, .sessionNotice: return "sessions"
         }
     }
 }

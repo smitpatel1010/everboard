@@ -41,7 +41,48 @@ enum DemoData {
         c.launchAtLogin = false
         c.agentActions = Array(AgentAction.examples.prefix(3))
         c.customSources = [CustomSourceConfig(id: "deploys", name: "Deploys", kind: .command, command: "~/bin/deploys --json")]
+        c.sessionsEnabled = true
         return c
+    }
+
+    /// Coding agent sessions in every state, for the Sessions page and screenshots.
+    static func sessions(now: Date = Date()) -> [AgentSession] {
+        func make(_ tool: String, _ id: String, _ state: AgentSession.State, _ title: String, project: String,
+                  activity: String? = nil, detail: String? = nil, prompt: String? = nil, minutes: Double,
+                  pending: Double? = nil) -> AgentSession {
+            var s = AgentSession(tool: tool, sessionId: id, state: state, now: now.addingTimeInterval(-minutes * 60 - 1800))
+            s.title = title
+            s.cwd = "/work/acme/\(project)"
+            s.activity = activity
+            s.detail = detail
+            s.prompt = prompt
+            s.stateSince = now.addingTimeInterval(-minutes * 60)
+            s.updatedAt = s.stateSince
+            s.pendingSince = pending.map { now.addingTimeInterval(-$0) }
+            s.resumeCommand = tool == "claude-code" ? "cd /work/acme/\(project) && claude --resume \(id)" : nil
+            return s
+        }
+        var approval = make("claude-code", "d1", .needsApproval, "Retry failed payouts with backoff", project: "payments-api",
+                            detail: "Allow running `git push origin feat/payout-retry`", minutes: 0.3)
+        approval.approval = .init(id: "demo", tool: "Bash", summary: "Allow running `git push origin feat/payout-retry`",
+                                  requestedAt: approval.stateSince, holdUntil: now.addingTimeInterval(42))
+        var question = make("claude-code", "d2", .needsReply, "Migrate settings screen to the new form components", project: "web-app",
+                            detail: "Should I also update the snapshot tests, or leave them for a separate change?", minutes: 6)
+        question.hostApp = "com.googlecode.iterm2"
+        question.tty = "/dev/ttys004"
+        question.questionIsChoice = false
+        var flaky = make("claude-code", "d3", .working, "Flaky checkout test on CI", project: "web-app",
+                         activity: "Running the checkout test suite", prompt: "now try with the retry removed", minutes: 1)
+        flaky.notice = .init(id: "demo-n", level: .error, text: "Hook PreToolUse:Bash failed, so it didn't run: guard.sh: No such file or directory",
+                             at: now.addingTimeInterval(-120))
+        return SessionRules.sorted([
+            approval, question, flaky,
+            make("cursor", "d4", .working, "Add dark mode tokens", project: "design-system",
+                 activity: "Running `npm run build:tokens`", minutes: 1, pending: 75),
+            make("claude-code", "d5", .done, "Summarise last week's incidents", project: "runbooks",
+                 detail: "Wrote the summary to incidents/2026-w46.md with three follow-ups.", minutes: 24),
+            make("claude-code", "d6", .idle, "sdk-swift", project: "sdk-swift", minutes: 90),
+        ])
     }
 
     static func seed(_ store: Store) async {
@@ -278,7 +319,7 @@ enum DemoData {
         window.contentView = NSHostingView(rootView: DashboardView().environment(model))
         window.orderFront(nil)
         var screens: [SidebarItem] = [.home, .inbox, .assistant, .mergeRequests, .pipelines, .jira, .workBrief, .reports, .agentRuns,
-                                      .aiActivity, .settings, .worldBrief]
+                                      .sessions, .aiActivity, .settings, .worldBrief]
         if let only = ProcessInfo.processInfo.environment["EVERBOARD_RESIZE_ONLY"] { screens = screens.filter { "\($0)" == only } }
         for item in screens {
             model.selection = item
@@ -305,10 +346,10 @@ enum DemoData {
         window.orderFront(nil)
         let screens: [(String, SidebarItem)] = [("inbox", .inbox), ("home", .home), ("aiactivity", .aiActivity), ("mrs", .mergeRequests), ("pipelines", .pipelines),
                                                 ("jira", .jira), ("workbrief", .workBrief), ("reports", .reports), ("world", .worldBrief), ("settings", .settings),
-                                                ("agentruns", .agentRuns), ("feed", .feed("deploys")), ("assistant", .assistant)]
-        let settingsTabs = ["usage", "privacy", "accounts", "team", "agents", "voice", "sources", "brain"]
+                                                ("agentruns", .agentRuns), ("sessions", .sessions), ("feed", .feed("deploys")), ("assistant", .assistant)]
+        let settingsTabs = ["usage", "privacy", "accounts", "team", "agents", "sessions-settings", "voice", "sources", "brain"]
         for (name, item) in screens + settingsTabs.map({ ($0, SidebarItem.settings) }) {
-            model.settingsTab = settingsTabs.contains(name) ? name : "general"
+            model.settingsTab = settingsTabs.contains(name) ? name.replacingOccurrences(of: "-settings", with: "") : "general"
             model.selection = item
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             save(window.contentView!, to: dir.appendingPathComponent("\(name).png"))

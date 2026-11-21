@@ -15,6 +15,7 @@ everboard/
 │   │   ├── Jira/                 REST v3 client, JiraSource, ADF helpers
 │   │   ├── AI/                   ClaudeCLIRunner, WorkAssistant, Reports, TeamRadar, Assistant, Usage
 │   │   ├── Agents/               AgentAction templates, AgentRunner, run history
+│   │   ├── Sessions/             coding agent sessions: hook adapters, session files, rules, hook installer
 │   │   ├── Custom/               command and folder sources (feeds without code)
 │   │   ├── Brain/                markdown notes: frontmatter, managed blocks, Brain writer
 │   │   ├── News/                 feed parsing, fetchers, clustering, brief, follow/ask
@@ -25,7 +26,8 @@ everboard/
 │   │   ├── Notifier, ToastCenter notifications (system + fallback banners)
 │   │   ├── CalendarService, Speech, CommandPalette, SystemEvents
 │   │   └── Views/                one file per screen
-│   └── everboard-cli/            ← debug/setup command-line tool
+│   ├── everboard-cli/            ← debug/setup command-line tool
+│   └── everboard-hook/           ← tiny binary coding agents' hooks call (see agent-sessions.md)
 ├── Tests/EverboardCoreTests/     ← unit tests (Swift Testing)
 ├── Resources/                    Info.plist, AppIcon.icns
 └── scripts/                      build-app.sh, make-icon.swift

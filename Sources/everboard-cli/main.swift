@@ -1,3 +1,4 @@
+import AppKit
 import EverboardCore
 import Foundation
 
@@ -17,6 +18,12 @@ everboard-cli — Everboard debug tool
   news collect              Fetch news into the database
   news brief [--no-gap]     Generate the World & Tech brief
   news prefs                Print the news preferences file
+  sessions                  List coding agent sessions (Claude Code, Cursor, …) and their status
+  sessions hooks            Show whether Everboard's hooks are installed in each tool
+  sessions install <tool>   Add Everboard's hook to claude-code or cursor (copies everboard-hook first)
+  sessions uninstall <tool> Remove Everboard's hook from claude-code or cursor
+  sessions answer <id> allow|deny|<option>  Answer a prompt Everboard is holding: allow or deny a permission,
+                            or pick an option (or type an answer) for a question (id: tool:session or a prefix)
 """
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -151,6 +158,88 @@ let codeHosts = secrets.codeHostAccounts.map { CodeHosts.client(for: $0) }
     }
 }
 
+@MainActor func sessionsCommand(_ args: [String]) throws {
+    let binary = SessionPaths.hookBinary().path
+    func target(_ name: String?) -> HookInstaller.Target {
+        guard let name, let t = HookInstaller.Target(rawValue: name) else {
+            fail("Tool must be one of: \(HookInstaller.Target.allCases.map(\.rawValue).joined(separator: ", "))")
+        }
+        return t
+    }
+    switch args.first {
+    case "hooks":
+        for t in HookInstaller.Target.allCases {
+            out("\(t.displayName): \(HookInstaller.status(target: t, binary: binary)) (\(t.settingsURL().path))")
+        }
+        out("Hook binary: \(binary)" + (FileManager.default.fileExists(atPath: binary) ? "" : " (missing)"))
+    case "install":
+        let t = target(args.dropFirst().first)
+        let built = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+            .deletingLastPathComponent().appendingPathComponent("everboard-hook")
+        guard FileManager.default.fileExists(atPath: built.path) else {
+            fail("everboard-hook not found next to this CLI. Build it: swift build --product everboard-hook")
+        }
+        try HookInstaller.installBinary(from: built)
+        try HookInstaller.install(target: t, binary: binary)
+        if !config.sessionsEnabled {
+            config.sessionsEnabled = true
+            saveConfig()
+        }
+        out("Installed in \(t.settingsURL().path). New \(t.displayName) sessions report to Everboard; restart running ones.")
+    case "answer":
+        let rest = Array(args.dropFirst())
+        guard rest.count == 2 else { fail("Usage: everboard-cli sessions answer <id> allow|deny|<option>") }
+        let dir = SessionDirectory()
+        let held = dir.loadAll().filter { $0.approval?.isHeld() == true }
+        let matches = held.filter { $0.id == rest[0] || $0.sessionId.hasPrefix(rest[0]) || $0.id.hasPrefix(rest[0]) }
+        guard matches.count == 1, let s = matches.first, let approval = s.approval else {
+            fail(matches.isEmpty ? "No held prompt for \(rest[0]). Held: " + (held.map(\.id).joined(separator: ", ").isEmpty ? "none" : held.map(\.id).joined(separator: ", "))
+                                 : "\(rest[0]) matches several sessions; use more of the id.")
+        }
+        if approval.isQuestion, let q = approval.questions?.first {
+            let answer: SessionApprovals.Answer = rest[1] == "deny"
+                ? .init(behavior: .deny, message: "The user skipped this question.")
+                : .init(behavior: .allow, answers: [q.question: [rest[1]]])
+            try SessionApprovals.writeAnswer(answer, for: s, approvalId: approval.id, in: dir.url)
+            out(rest[1] == "deny" ? "Skipped: \(q.question)" : "Answered \"\(q.question)\" with \(rest[1])")
+        } else {
+            guard let behavior = SessionApprovals.Behavior(rawValue: rest[1]) else { fail("This prompt takes allow or deny") }
+            try SessionApprovals.writeAnswer(.init(behavior: behavior), for: s, approvalId: approval.id, in: dir.url)
+            out("\(behavior == .allow ? "Allowed" : "Denied"): \(approval.summary) (\(s.id))")
+        }
+    case "uninstall":
+        let t = target(args.dropFirst().first)
+        try HookInstaller.uninstall(target: t)
+        out("Removed from \(t.settingsURL().path)")
+    default:
+        let dir = SessionDirectory()
+        let sessions = SessionRules.sorted(dir.loadAll().map { SessionRules.refresh($0) })
+        if sessions.isEmpty { out("No sessions in \(dir.url.path). Install hooks with: everboard-cli sessions install claude-code") }
+        for s in sessions {
+            out("[\(s.state.label)] \(s.toolName) · \(s.project ?? "?") · \(s.title ?? "untitled") · " + (Dates.age(s.updatedAt) == "now" ? "just now" : "\(Dates.age(s.updatedAt)) ago"))
+            if let a = s.activity, s.state == .working { out("    now: \(a)") }
+            if let d = s.detail { out("    \(d)") }
+            if let a = s.approval, a.isHeld() { out("    waiting for your answer in Everboard: everboard-cli sessions answer \(s.id) allow|deny") }
+            if let n = s.notice { out("    notice (\(n.level.rawValue)): \(n.text)") }
+            if s.tool == "claude-code", s.hostApp == "com.anthropic.claudefordesktop",
+               let link = ClaudeDesktopSessions.hostSessionId(forCLISession: s.sessionId).flatMap(ClaudeDesktopSessions.openURL) {
+                out("    opens: \(link)")
+            } else if s.tool == "cursor", let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: s.hostApp ?? "com.todesktop.230313mzl4w4u92"),
+                      CursorChats.supportsChatLinks(app: app), let link = CursorChats.chatLink(chatId: s.sessionId) {
+                out("    opens: \(link)")
+            } else if s.tool == "cursor", let target = CursorWorkspaces.workspace(forChat: s.sessionId) {
+                out("    opens: \(target.path) in Cursor")
+            } else if let link = s.openURL { out("    opens: \(link)") }
+            if s.tool == "cursor", let info = CursorChats.info(chatId: s.sessionId) {
+                if let name = info.name { out("    Cursor name: \(name)") }
+                if let q = info.pendingQuestion {
+                    out("    Cursor question waiting: " + q.questions.map { "\($0.question) [\($0.options.map(\.label).joined(separator: " / "))]" }.joined(separator: "; "))
+                }
+            }
+        }
+    }
+}
+
 do {
     switch args.first {
     case "check": await check()
@@ -182,6 +271,7 @@ do {
         let assistant = WorkAssistant(store: store, claude: claudeRunner(), codeHosts: codeHosts, jira: JiraClient(secrets: secrets))
         out(try await assistant.morningBrief())
     case "news": try await newsCommand(Array(args.dropFirst()))
+    case "sessions": try sessionsCommand(Array(args.dropFirst()))
     default: out(usage)
     }
 } catch {

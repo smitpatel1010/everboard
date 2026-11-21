@@ -14,6 +14,7 @@ struct SettingsView: View {
                      Page(id: "team", title: "Team", icon: "person.3", tint: .teal),
                      Page(id: "jira", title: "Jira", icon: "checklist", tint: .blue)]),
         ("Work with agents", [Page(id: "agents", title: "Agents", icon: "terminal", tint: .purple),
+                              Page(id: "sessions", title: "Agent sessions", icon: "rectangle.stack", tint: .purple),
                               Page(id: "voice", title: "Voice", icon: "waveform", tint: .indigo),
                               Page(id: "sources", title: "Sources", icon: "tray.and.arrow.down", tint: .orange),
                               Page(id: "brain", title: "Brain", icon: "brain", tint: .pink)]),
@@ -79,6 +80,7 @@ struct SettingsView: View {
         case "notifications": NotificationSettings()
         case "web": WebPanelSettings()
         case "agents": AgentSettings()
+        case "sessions": SessionSettings()
         case "voice": VoiceSettings()
         case "sources": SourceSettings()
         case "brain": BrainSettingsView()

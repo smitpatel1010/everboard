@@ -14,6 +14,7 @@ struct MenuBarView: View {
                 if let warning = attention {
                     Label(warning, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange)
                 }
+                SessionsSection()
                 MeetingsSection()
                 activity
             }
@@ -185,6 +186,11 @@ struct EventRow: View {
         case .reportReady: return "doc.text"
         case .customNew: return "tray.and.arrow.down"
         case .customStatus: return "arrow.triangle.2.circlepath"
+        case .sessionNeedsApproval: return "hand.raised.fill"
+        case .sessionNeedsReply: return "questionmark.bubble.fill"
+        case .sessionDone: return "checkmark.circle"
+        case .sessionFailed: return "exclamationmark.triangle.fill"
+        case .sessionNotice: return "exclamationmark.bubble.fill"
         }
     }
 
@@ -194,6 +200,10 @@ struct EventRow: View {
         case .newsMajor, .newsFollow: return .orange
         case .jiraAssigned, .jiraComment, .jiraMention, .jiraFilterNew, .jiraFilterStatus: return .blue
         case .workBriefReady, .newsBriefReady, .reportReady: return .yellow
+        case .sessionNeedsApproval: return .orange
+        case .sessionNeedsReply: return .pink
+        case .sessionFailed, .sessionNotice: return .red
+        case .sessionDone: return .green
         default: return .purple
         }
     }
@@ -219,6 +229,42 @@ struct MeetingsSection: View {
                             Button("Join") { NSWorkspace.shared.open(url) }.controlSize(.small)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Agent sessions that are blocked on you, at the top of the popover.
+struct SessionsSection: View {
+    private var model: AppModel { .shared }
+    private var center: SessionCenter { .shared }
+
+    var body: some View {
+        let waiting = center.needsYou
+        if model.config.sessionsEnabled && !waiting.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Agents waiting for you").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("All sessions") { model.showDashboard(.sessions) }.buttonStyle(.borderless).font(.caption)
+                }
+                ForEach(waiting.prefix(4)) { s in
+                    Button { center.open(s) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: SessionStyle.symbol(s)).foregroundStyle(SessionStyle.color(s)).frame(width: 16)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(SessionStyle.title(s, hidePrompts: model.config.sessionsHidePrompts)).lineLimit(1)
+                                Text(SessionStyle.line(s)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            AgeText(date: s.stateSince)
+                        }
+                        .padding(.vertical, 3).padding(.horizontal, 4)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    SessionAnswerBar(session: s, compact: true).padding(.leading, 28)
                 }
             }
         }

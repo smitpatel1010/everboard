@@ -295,6 +295,7 @@ final class AssistantModel {
         case "team radar": model.reportsTab = "radar"; model.selection = .reports
         case "one on one": model.reportsTab = "oneonone"; model.selection = .reports
         case "agent runs": model.selection = .agentRuns
+        case "agent sessions": model.selection = .sessions
         case "world": model.selection = .worldBrief
         case "settings": model.selection = .settings
         default: model.selection = .home

@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "Everboard", targets: ["EverboardMac"]),
         .executable(name: "everboard-cli", targets: ["everboard-cli"]),
+        .executable(name: "everboard-hook", targets: ["everboard-hook"]),
         .library(name: "EverboardCore", targets: ["EverboardCore"]),
     ],
     dependencies: [
@@ -25,6 +26,11 @@ let package = Package(
         ),
         .executableTarget(
             name: "everboard-cli",
+            dependencies: ["EverboardCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .executableTarget(
+            name: "everboard-hook",
             dependencies: ["EverboardCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

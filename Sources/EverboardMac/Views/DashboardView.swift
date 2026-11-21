@@ -91,6 +91,7 @@ struct DashboardView: View {
         case .worldBrief: WorldBriefView()
         case .settings: SettingsView()
         case .agentRuns: AgentRunsView()
+        case .sessions: SessionsView()
         case .feed(let id):
             if let source = model.config.customSources.first(where: { $0.id == id }) {
                 CustomFeedView(source: source).id(source.id)
@@ -143,8 +144,14 @@ struct Sidebar: View {
         }
         out.append(("Personal", [Entry(item: .worldBrief, title: "World & Tech", icon: "globe")]
             + model.config.webPanels.map { Entry(item: .web($0.id), title: $0.name, icon: "globe.desk") }))
-        out.append(("Agents", [Entry(item: .agentRuns, title: "Agent runs", icon: "terminal", badge: running),
-                               Entry(item: .aiActivity, title: "AI activity", icon: "lock.shield")]))
+        var agents: [Entry] = []
+        if model.config.sessionsEnabled {
+            let waiting = SessionCenter.shared.needsYou.count
+            agents.append(Entry(item: .sessions, title: "Sessions", icon: "rectangle.stack", badge: waiting, urgent: waiting > 0))
+        }
+        agents += [Entry(item: .agentRuns, title: "Agent runs", icon: "terminal", badge: running),
+                   Entry(item: .aiActivity, title: "AI activity", icon: "lock.shield")]
+        out.append(("Agents", agents))
         return out
     }
 

@@ -96,6 +96,14 @@ public struct AppConfig: Codable, Equatable, Sendable {
 
     public var calendarEnabled = true
     public var paletteEnabled = true
+    /// Show coding agent sessions (Claude Code, Cursor, …) reported by `everboard-hook`.
+    public var sessionsEnabled = false
+    /// Hide prompt text in the Sessions list (titles fall back to the project name).
+    public var sessionsHidePrompts = false
+    /// Hold Claude Code permission prompts for you to answer from Everboard while you're in another app.
+    public var sessionsHoldApprovals = false
+    /// How long a held prompt waits before the agent shows its own prompt.
+    public var sessionsHoldSeconds: Double = 300
     /// AVSpeechSynthesisVoice identifier; empty = best available English voice.
     public var speechVoice = ""
     public var speechRate: Double = 0.5
@@ -239,6 +247,10 @@ public struct AppConfig: Codable, Equatable, Sendable {
         urgentCategories = v(.urgentCategories, d.urgentCategories)
         calendarEnabled = v(.calendarEnabled, d.calendarEnabled)
         paletteEnabled = v(.paletteEnabled, d.paletteEnabled)
+        sessionsEnabled = v(.sessionsEnabled, d.sessionsEnabled)
+        sessionsHidePrompts = v(.sessionsHidePrompts, d.sessionsHidePrompts)
+        sessionsHoldApprovals = v(.sessionsHoldApprovals, d.sessionsHoldApprovals)
+        sessionsHoldSeconds = v(.sessionsHoldSeconds, d.sessionsHoldSeconds)
         speechVoice = v(.speechVoice, d.speechVoice)
         speechRate = v(.speechRate, d.speechRate)
         weeklyReportEnabled = v(.weeklyReportEnabled, d.weeklyReportEnabled)
@@ -273,7 +285,7 @@ public struct AppConfig: Codable, Equatable, Sendable {
         case newsBriefTimes, newsGapCheck, newsMajorAlerts, newsAlertKeywords, newsRegion, newsSources
         case claudePath, claudeModel, autoSummarizeReporteeMRs, webPanels, launchAtLogin
         case batchLowPriority, batchIntervalMinutes, quietDuringMeetings, urgentCategories
-        case calendarEnabled, paletteEnabled, speechVoice, speechRate
+        case calendarEnabled, paletteEnabled, sessionsEnabled, sessionsHidePrompts, sessionsHoldApprovals, sessionsHoldSeconds, speechVoice, speechRate
         case weeklyReportEnabled, weeklyReportWeekday, weeklyReportTime
         case jiraShowDone, mrShowDraftReviews
         case aiWorkEnabled, aiRedactSecrets, aiRedactEmails, aiPseudonymizePeople, aiMaskedTerms

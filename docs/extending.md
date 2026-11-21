@@ -93,6 +93,10 @@ Lists `*.md` files in a folder and its subfolders (hidden folders such as `.obsi
 
 Both are ordinary `DataSource`s (`Custom/CustomSource.swift`) built by `CustomSources.sources(_:)` from `AppConfig.customSources`, so they follow every rule above: deterministic ids, one `replace` scope per source, events from `ItemChange`.
 
+## Add a coding agent to Sessions
+
+Write one JSON file per session to the sessions folder, or send your tool's hook payloads to `everboard-hook <tool>`. The format and the state rules are in [Agent sessions](agent-sessions.md#add-another-tool). To support a tool's own hook events natively, map its event names in `SessionHooks.HookEvent`, add its settings file to `HookInstaller.Target`, and add payload fixtures to `SessionTests.swift`.
+
 ## Add an agent action
 
 Agent actions are config, not code: **Settings → Agents**, or `agentActions` in `config.json`:

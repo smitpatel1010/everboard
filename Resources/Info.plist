@@ -2,23 +2,43 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleExecutable</key><string>Everboard</string>
-    <key>CFBundleIdentifier</key><string>local.everboard.mac</string>
-    <key>CFBundleName</key><string>Everboard</string>
-    <key>CFBundleDisplayName</key><string>Everboard</string>
-    <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
-    <key>CFBundleIconFile</key><string>AppIcon</string>
-    <key>LSMinimumSystemVersion</key><string>14.0</string>
-    <key>LSUIElement</key><true/>
-    <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-    <key>NSHighResolutionCapable</key><true/>
-    <key>NSCalendarsFullAccessUsageDescription</key><string>Everboard shows your upcoming meetings, join links and meeting prep, and keeps notifications quiet while you're in a meeting.</string>
-    <key>NSMicrophoneUsageDescription</key><string>Everboard listens only after you press the mic button or ⌥⇧Space, so you can talk to your agents.</string>
-    <key>NSSpeechRecognitionUsageDescription</key><string>Everboard turns what you say to the Assistant into text with Apple's speech recognition, on this Mac when it can.</string>
-    <key>NSCalendarsUsageDescription</key><string>Everboard shows your upcoming meetings and keeps notifications quiet during them.</string>
-    <key>NSHumanReadableCopyright</key><string>Everboard — MIT licensed.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Everboard</string>
+	<key>CFBundleExecutable</key>
+	<string>Everboard</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.everboard.mac</string>
+	<key>CFBundleName</key>
+	<string>Everboard</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Everboard brings the right terminal tab to the front when you open an agent session, and types the replies you send to sessions running in Terminal or iTerm2.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Everboard shows your upcoming meetings, join links and meeting prep, and keeps notifications quiet while you're in a meeting.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Everboard shows your upcoming meetings and keeps notifications quiet during them.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Everboard — MIT licensed.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Everboard listens only after you press the mic button or ⌥⇧Space, so you can talk to your agents.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Everboard turns what you say to the Assistant into text with Apple's speech recognition, on this Mac when it can.</string>
 </dict>
 </plist>

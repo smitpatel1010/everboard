@@ -39,6 +39,7 @@ Per-person metrics (cycle time, change size, stuck work, reviews given) and a **
 
 - **Talk to them:** press ⌥⇧Space and say "run deep review on the payments MR" or "what needs me today?". Apple's speech recognition (on-device by default) and your Claude CLI do the work; agents still ask before they run.
 - **Agent actions:** right-click any MR, PR, pipeline or issue to run your own CLI agent on it, such as `claude -p "/deep-review {url}"` or `cursor-agent …`. You see the command first and the output streams in. Every run is kept, and nothing is ever posted for you.
+- **Every agent session in one place:** see what each Claude Code and Cursor session is doing right now, and get a notification when one needs your approval or is waiting for your reply. One click installs a hook in each tool; any other agent can join by writing a small JSON file. See [Agent sessions](docs/agent-sessions.md).
 - **Feeds without code:** point Everboard at a script that prints JSON, or a folder of markdown notes, and it becomes a feed with notifications.
 - **A markdown brain:** optionally write the work brief, team digest, 1:1 prep, weekly draft and agent runs into an Obsidian-style folder (frontmatter, `[[links]]`) without ever touching what you wrote yourself.
 

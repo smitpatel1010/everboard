@@ -65,7 +65,7 @@ public struct AssistantPlanner: Sendable {
     public init(claude: ClaudeRunning) { self.claude = claude }
 
     public static let screens = ["home", "inbox", "merge requests", "pipelines", "jira", "work brief", "reports", "team radar",
-                                 "one on one", "agent runs", "world", "settings"]
+                                 "one on one", "agent runs", "agent sessions", "world", "settings"]
 
     /// Cheap requests that don't need a model: "open inbox", "show pipelines", "refresh".
     public static func localIntent(_ text: String) -> AssistantIntent? {
@@ -77,7 +77,7 @@ public struct AssistantPlanner: Sendable {
             let rest = String(t.dropFirst(verb.count)).replacingOccurrences(of: "my ", with: "")
             let aliases: [String: String] = ["mrs": "merge requests", "prs": "merge requests", "pull requests": "merge requests",
                                              "reviews": "merge requests", "radar": "team radar", "team": "team radar",
-                                             "brief": "work brief", "news": "world", "agents": "agent runs", "1:1": "one on one"]
+                                             "brief": "work brief", "news": "world", "agents": "agent runs", "sessions": "agent sessions", "1:1": "one on one"]
             let screen = aliases[rest] ?? rest
             if screens.contains(screen) { return AssistantIntent(action: .show, screen: screen, reply: "") }
         }

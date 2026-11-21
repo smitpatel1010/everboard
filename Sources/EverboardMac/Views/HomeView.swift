@@ -352,11 +352,20 @@ private struct NeedsYouCard: View {
         let url: String?
         var item: FeedItem?
         var event: AppEvent?
+        var session: AgentSession?
     }
 
     var focus: [Focus] {
         let i = model.items
         var out: [Focus] = []
+        if model.config.sessionsEnabled {
+            for s in SessionCenter.shared.needsYou {
+                out.append(Focus(id: "session." + s.id, icon: SessionStyle.symbol(s), tint: SessionStyle.color(s),
+                                 title: SessionStyle.title(s, hidePrompts: model.config.sessionsHidePrompts),
+                                 detail: "\(s.toolName) · \(SessionStyle.line(s))",
+                                 tag: s.state == .needsApproval ? "Approve" : "Reply", url: nil, session: s))
+            }
+        }
         for mr in i.mine where mr["pipelineStatus"] == "failed" {
             out.append(Focus(id: "red." + mr.id, icon: "xmark.octagon.fill", tint: .red, title: mr.title,
                              detail: "\(mr.subtitle) · pipeline failed", tag: "Fix pipeline", url: mr["pipelineUrl"] ?? mr.url, item: mr))
@@ -397,7 +406,8 @@ private struct NeedsYouCard: View {
                 VStack(spacing: 2) {
                     ForEach(list.prefix(8)) { f in
                         HomeRow(icon: f.icon, tint: f.tint, title: f.title, detail: f.detail, tag: f.tag) {
-                            if let e = f.event { model.open(e) } else { model.open(f.url) }
+                            if let s = f.session { SessionCenter.shared.open(s) }
+                            else if let e = f.event { model.open(e) } else { model.open(f.url) }
                         }
                         .contextMenu { menu(f) }
                     }

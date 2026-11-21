@@ -45,6 +45,7 @@ Open it from the menu, from the Dock while it's open, by launching the app again
 | **Team & Reports** | **Radar** (each reportee's load, review waits, aging and red MRs, Jira movement, plus a digest), **Team health** metrics, **1:1 prep**, **Daily standup**, **Weekly report**. Everything here is a draft for you; nothing is sent to anyone. | Refresh, AI read, Copy, Save to notes, Listen |
 | **Feeds** | One screen per custom source (Settings → Sources): items from your script's JSON, or notes from a markdown folder | Open, filter, run an agent, mute |
 | **Agent Runs** | Every agent action you ran, newest first, with its output | Show output, stop, open the item or saved note, delete |
+| **Sessions** | Your Claude Code, Cursor and other coding agent sessions: which need your approval or reply, what each one is doing, and which finished. Shown once you turn it on in Settings → Agent sessions. See [Agent sessions](agent-sessions.md). | Click to switch to the session; copy its resume command, open its folder, mute, remove |
 | **Web panels** | Any page you add, e.g. Jira dashboards, Grafana | Back, reload, open in browser |
 | **World & Tech** | Personal news brief (see below) | — |
 | **AI Activity** | Every Claude call: the exact prompt as it left your Mac (after masking), the instructions, and the reply, plus what was masked | Filter work/news, copy, clear the log |

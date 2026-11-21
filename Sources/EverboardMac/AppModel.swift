@@ -34,7 +34,7 @@ struct AIPanel: Identifiable {
 }
 
 enum SidebarItem: Hashable {
-    case home, inbox, mergeRequests, pipelines, jira, workBrief, reports, worldBrief, aiActivity, settings, agentRuns, assistant
+    case home, inbox, mergeRequests, pipelines, jira, workBrief, reports, worldBrief, aiActivity, settings, agentRuns, assistant, sessions
     case web(String)
     /// A custom source's feed, by source id.
     case feed(String)
@@ -131,6 +131,7 @@ final class AppModel {
         started = true
         Log.info("Everboard \(AppInfo.version) starting; code hosts=\(codeHostAccounts.map(\.id)) jira=\(secrets.hasJira)")
         notifier.setUp(model: self)
+        SessionCenter.shared.configure(enabled: config.sessionsEnabled)
         SystemEvents.shared.start(
             onWake: { [weak self] in self?.refreshAll() },
             onNetworkUp: { [weak self] in self?.refreshAll() })
@@ -220,6 +221,7 @@ final class AppModel {
             || c.customSources != config.customSources
         config = c
         if !DemoData.isDemo { try? c.save() }
+        SessionCenter.shared.configure(enabled: c.sessionsEnabled)
         if intervalsChanged || filtersChanged {
             configureSources()
         } else {
@@ -261,7 +263,10 @@ final class AppModel {
         let inMeeting = config.quietDuringMeetings && calendar.inMeeting
         var now: [AppEvent] = []
         for e in toNotify {
-            let urgent = config.isUrgent(e.category) || [.workBriefReady, .newsBriefReady, .reportReady].contains(e.category)
+            // An agent blocked on you is always urgent: it can't continue until you answer.
+            let urgent = config.isUrgent(e.category) || [.workBriefReady, .newsBriefReady, .reportReady,
+                                                         .sessionNeedsApproval, .sessionNeedsReply, .sessionFailed,
+                                                         .sessionNotice].contains(e.category)
             if !inMeeting && (urgent || !config.batchLowPriority) { now.append(e) } else { heldEvents.append(e) }
         }
         if !heldEvents.isEmpty && heldSince == nil { heldSince = Date() }

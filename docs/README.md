@@ -11,6 +11,7 @@ New here? Read them in this order:
 Reference:
 - **[AI & token usage](ai-and-usage.md):** every Claude call, what it sends, how usage is tracked.
 - **[Security](security.md):** the threat model, the safeguards, and where data lives.
+- **[Agent sessions](agent-sessions.md):** see every Claude Code and Cursor session, and add other tools.
 - **[Extending](extending.md):** recipes for adding sources, screens, settings and tests.
 - **[Troubleshooting](troubleshooting.md)**
 
